@@ -15,6 +15,7 @@ on:
           - SukiSU-Nova
           - BakaSU
           - FinaSU
+          - KernelSU
         default: FinaSU
       build_channel:
         description: "构建管理器通道"

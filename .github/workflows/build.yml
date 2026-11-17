@@ -50,6 +50,11 @@ on:
         required: false
         type: string
         default: ""
+      manager_ver:
+        description: "管理器 versionCode（如 32730），作为内核命名版本；优先级高于按提交数推导的 KSU_VERSION"
+        required: false
+        type: string
+        default: ""
 
       # ==================== 可选配置 ====================
       version:
@@ -503,6 +508,9 @@ jobs:
             "FinaSU")
               BRANCH="-s master"
               ;;
+            "KernelSU")
+              BRANCH="-s main"
+              ;;
             "SukiSU-Nova")
               if [ "${{ inputs.enable_susfs }}" = "false" ]; then
                 BRANCH="main"
@@ -681,6 +689,23 @@ jobs:
               # 必须在上方证书注入（awk 重写 Kbuild）之后调用
               bash "$GITHUB_WORKSPACE/scripts/ksu_post_setup.sh" KernelSU finasu
               ;;
+            "KernelSU")
+              echo "添加 ${{ inputs.ksu_variant }}..."
+              git clone https://github.com/tiann/KernelSU.git KernelSU
+              # 应用 10_enable_susfs_for_ksu.patch 到 KernelSU 源码
+              cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" KernelSU/
+              cd KernelSU && patch -p1 < 10_enable_susfs_for_ksu.patch && cd ..
+              # 复制 SUSFS 内核文件
+              cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/fs/susfs.c" KernelSU/kernel/
+              cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/include/linux/susfs.h" KernelSU/kernel/include/linux/
+              cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/include/linux/susfs_def.h" KernelSU/kernel/include/linux/
+              # 应用 apply_kernelsu_susfs.py 集成 SUSFS 到 KernelSU 结构 (init.c, Kconfig, Kbuild)
+              python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply_kernelsu_susfs.py" || {
+                echo "::error::apply_kernelsu_susfs.py 无法集成 SUSFS 到 KernelSU，构建中断"
+                exit 1
+              }
+              echo "原生 KernelSU SUSFS 支持已添加"
+              ;;
             *)
               echo "未知变体: ${{ inputs.ksu_variant }}" >&2
               exit 1
@@ -705,6 +730,7 @@ jobs:
                 SukiSU-Nova) KSU_VERSION=$((30000 + KSU_COUNT + 996)) ;;
                 BakaSU) KSU_VERSION=$((30700 + KSU_COUNT)) ;;
                 FinaSU) KSU_VERSION=$((30000 + KSU_COUNT)) ;;
+                KernelSU) KSU_VERSION=$((30000 + KSU_COUNT)) ;;
               esac
             fi
           fi
