@@ -692,6 +692,21 @@ jobs:
             "KernelSU")
               echo "添加 ${{ inputs.ksu_variant }}..."
               git clone https://github.com/tiann/KernelSU.git KernelSU
+              # 创建 drivers/kernelsu 符号链接并注册到内核构建系统
+              # （与 SukiSU-Nova/BakaSU/FinaSU 的 kernel/setup.sh 保持一致）
+              DRIVER_DIR=""
+              if [ -d "${KERNEL_ROOT}/common/drivers" ]; then
+                  DRIVER_DIR="${KERNEL_ROOT}/common/drivers"
+              elif [ -d "${KERNEL_ROOT}/drivers" ]; then
+                  DRIVER_DIR="${KERNEL_ROOT}/drivers"
+              fi
+              if [ -n "$DRIVER_DIR" ]; then
+                  ln -sf "$(realpath --relative-to="$DRIVER_DIR" "$GITHUB_WORKSPACE/KernelSU/kernel")" "$DRIVER_DIR/kernelsu"
+                  grep -q "kernelsu" "$DRIVER_DIR/Makefile" || printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> "$DRIVER_DIR/Makefile"
+                  if ! grep -q 'source "drivers/kernelsu/Kconfig"' "$DRIVER_DIR/Kconfig"; then
+                      sed -i "/endmenu/i source \"drivers/kernelsu/Kconfig\"" "$DRIVER_DIR/Kconfig"
+                  fi
+              fi
               # 应用 10_enable_susfs_for_ksu.patch 到 KernelSU 源码
               cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" KernelSU/
               cd KernelSU && patch -p1 < 10_enable_susfs_for_ksu.patch && cd ..
