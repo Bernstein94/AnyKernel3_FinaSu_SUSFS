@@ -706,9 +706,6 @@ jobs:
                 exit 1
               }
               echo "原生 KernelSU SUSFS 支持已添加"
-              }
-              echo "原生 KernelSU SUSFS 支持已添加"
-              ;;
             *)
               echo "未知变体: ${{ inputs.ksu_variant }}" >&2
               exit 1
