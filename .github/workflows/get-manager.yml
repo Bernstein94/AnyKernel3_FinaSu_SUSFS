@@ -206,6 +206,7 @@ jobs:
           case "${{ inputs.kernelsu_variant }}" in
             "BakaSU") REPO="Baka-SU/BakaSU";           PREF="arm64" ;;
             "FinaSU") REPO="LyraVoid/FinaSU";          PREF="universal" ;;
+            "KernelSU") REPO="tiann/KernelSU";          PREF="universal" ;;
             *) echo "::error::未知变体"; exit 1 ;;
           esac
 
@@ -365,6 +366,7 @@ jobs:
           case "$VARIANT" in
             "BakaSU") REPO="Baka-SU/BakaSU";           KSUM="manager"; EXPECTED_BRANCH="main" ;;
             "FinaSU") REPO="LyraVoid/FinaSU";          KSUM="manager"; EXPECTED_BRANCH="master" ;;
+            "KernelSU") REPO="tiann/KernelSU";          KSUM="manager"; EXPECTED_BRANCH="main" ;;
             *) echo "::error::未知变体: $VARIANT"; exit 1 ;;
           esac
 
@@ -402,6 +404,7 @@ jobs:
                   case "$VARIANT" in
                     BakaSU) REL_KSU_VERSION=$((30700 + REL_COUNT)) ;;
                     FinaSU) REL_KSU_VERSION=$((30000 + REL_COUNT)) ;;
+                    KernelSU) REL_KSU_VERSION=$((30000 + REL_COUNT)) ;;
                   esac
                   if [ "$MANAGER_VERSION" != "$REL_KSU_VERSION" ]; then
                     echo "::warning::Release 管理器版本 $MANAGER_VERSION 与标签提交对应的 KSU 版本 $REL_KSU_VERSION 不一致"
@@ -730,6 +733,7 @@ jobs:
             case "$VARIANT" in
               BakaSU) PINNED_KSU_VERSION=$((30700 + PIN_COUNT)) ;;
               FinaSU) PINNED_KSU_VERSION=$((30000 + PIN_COUNT)) ;;
+              KernelSU) PINNED_KSU_VERSION=$((30000 + PIN_COUNT)) ;;
               *)      PINNED_KSU_VERSION="" ;;
             esac
             if [ -n "$PINNED_KSU_VERSION" ]; then
