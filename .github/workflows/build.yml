@@ -716,7 +716,7 @@ jobs:
               cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/include/linux/susfs.h" KernelSU/kernel/include/linux/
               cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/include/linux/susfs_def.h" KernelSU/kernel/include/linux/
               # 应用 apply_kernelsu_susfs.py 集成 SUSFS 到 KernelSU 结构 (init.c, Kconfig, Kbuild)
-              python3 "$GITHUB_WORKSPACE/.github/scripts/susfs_fixes/apply_kernelsu_susfs.py" || {
+              python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply_kernelsu_susfs.py" || {
                 echo "::error::apply_kernelsu_susfs.py 无法集成 SUSFS 到 KernelSU，构建中断"
                 exit 1
               }
