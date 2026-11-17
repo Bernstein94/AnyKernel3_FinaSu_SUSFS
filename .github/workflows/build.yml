@@ -708,25 +708,6 @@ jobs:
                 exit 1
               }
               echo "原生 KernelSU SUSFS 支持已添加"
-              ;;            "KernelSU")
-              echo "添加 ${{ inputs.ksu_variant }}..."
-              git clone https://github.com/tiann/KernelSU.git "$KERNEL_ROOT/KernelSU"
-              # 使用 KernelSU 官方 setup.sh 创建 drivers/kernelsu 符号链接
-              bash "$KERNEL_ROOT/KernelSU/kernel/setup.sh" main
-              # 应用 10_enable_susfs_for_ksu.patch 到 KernelSU 源码
-              cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" "$KERNEL_ROOT/KernelSU/"
-              cd "$KERNEL_ROOT/KernelSU" && patch -p1 < 10_enable_susfs_for_ksu.patch && cd "$KERNEL_ROOT"
-              # 复制 SUSFS 内核文件
-              mkdir -p "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
-              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/fs/susfs.c" "$KERNEL_ROOT/KernelSU/kernel/"
-              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
-              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs_def.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
-              # 应用 apply_kernelsu_susfs.py 集成 SUSFS 到 KernelSU 结构 (init.c, Kconfig, Kbuild)
-              python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply_kernelsu_susfs.py" "$KERNEL_ROOT/KernelSU" || {
-                echo "::error::apply_kernelsu_susfs.py 无法集成 SUSFS 到 KernelSU，构建中断"
-                exit 1
-              }
-              echo "原生 KernelSU SUSFS 支持已添加"
               ;;
             *)
               echo "未知变体: ${{ inputs.ksu_variant }}" >&2
