@@ -696,6 +696,7 @@ jobs:
               cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" KernelSU/
               cd KernelSU && patch -p1 < 10_enable_susfs_for_ksu.patch && cd ..
               # 复制 SUSFS 内核文件
+              mkdir -p KernelSU/kernel/include/linux/
               cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/fs/susfs.c" KernelSU/kernel/
               cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/include/linux/susfs.h" KernelSU/kernel/include/linux/
               cp "$GITHUB_WORKSPACE/.github/actions/susfs/susfs618/kernel_patches/include/linux/susfs_def.h" KernelSU/kernel/include/linux/
