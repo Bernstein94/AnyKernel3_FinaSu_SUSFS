@@ -691,6 +691,7 @@ jobs:
               ;;
             "KernelSU")
               echo "添加 ${{ inputs.ksu_variant }}..."
+              git clone https://github.com/tiann/KernelSU.git "$KERNEL_ROOT/KernelSU"
               # 创建 drivers/kernelsu 符号链接并注册到内核构建系统
               DRIVER_DIR=""
               if [ -d "${KERNEL_ROOT}/common/drivers" ]; then
