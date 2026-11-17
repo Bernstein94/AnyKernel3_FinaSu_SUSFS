@@ -691,15 +691,28 @@ jobs:
               ;;
             "KernelSU")
               echo "添加 ${{ inputs.ksu_variant }}..."
-              git clone https://github.com/tiann/KernelSU.git "$KERNEL_ROOT/KernelSU"
-              # 创建 drivers/kernelsu 符号链接并注册到内核构建系统
-              DRIVER_DIR=""
-              if [ -d "${KERNEL_ROOT}/common/drivers" ]; then
-                  DRIVER_DIR="${KERNEL_ROOT}/common/drivers"
-              elif [ -d "${KERNEL_ROOT}/drivers" ]; then
-                  DRIVER_DIR="${KERNEL_ROOT}/drivers"
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" -o "$KERNEL_ROOT/KernelSU/kernel/setup.sh" || {
+                echo "下载 KernelSU setup.sh 失败"
+                exit 1
+              }
+              bash "$KERNEL_ROOT/KernelSU/kernel/setup.sh" main
+              # 内核侧检出到 get-manager 选定的提交（留空则跟随 main HEAD）
+              if [ -n "$KSU_COMMIT" ]; then
+                if ! git -C KernelSU checkout --detach "$KSU_COMMIT" 2>/dev/null; then
+                  git -C KernelSU fetch origin "$KSU_COMMIT"
+                  git -C KernelSU checkout --detach "$KSU_COMMIT"
+                fi
+                if [ "$(git -C KernelSU rev-parse HEAD)" != "$KSU_COMMIT" ]; then
+                  echo "::error::KernelSU 检出官方构建提交 $KSU_COMMIT 失败，无法对齐管理器版本"
+                  exit 1
+                fi
+                echo "KernelSU 已检出到官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30000 + $(git -C KernelSU rev-list --count HEAD))))"
               fi
-            "KernelSU")
+              # Original KernelSU：drivers/kernelsu 已由 setup.sh 集成进内核树，
+              # 不需要额外的软链/Makefile/Kconfig 修改；也不需要证书注入
+              #（官方管理器使用默认第一信任槽，与主线 KernelSU 一致）。
+              # 不调用 ksu_post_setup.sh：原版 Kbuild 版本字符串保持 @main/@HEAD。
+              ;;            "KernelSU")
               echo "添加 ${{ inputs.ksu_variant }}..."
               git clone https://github.com/tiann/KernelSU.git "$KERNEL_ROOT/KernelSU"
               # 使用 KernelSU 官方 setup.sh 创建 drivers/kernelsu 符号链接
