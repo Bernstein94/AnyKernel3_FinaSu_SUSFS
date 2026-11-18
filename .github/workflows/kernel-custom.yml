@@ -389,8 +389,8 @@ on:
         required: false
         type: boolean
         default: false
-      supp_op:
-        description: "启用 一加 骁龙8 Elite/Gen5 支持"
+      use_performance_patches:
+        description: "启用 性能补丁（供应商补丁，无需外部依赖）"
         required: false
         type: boolean
         default: false
@@ -578,7 +578,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel || false }}
       use_nomount: ${{ inputs.use_nomount || false }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
-      supp_op: ${{ inputs.supp_op || false }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       enable_susfs: ${{ inputs.ksu_mode != '禁用SUSFS' && inputs.ksu_mode != '禁用KSU' }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}

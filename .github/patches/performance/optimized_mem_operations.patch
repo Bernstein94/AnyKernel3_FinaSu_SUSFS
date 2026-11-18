@@ -1,0 +1,33 @@
+commit 93398e05bd4d96b270b7db2b601875d353e9f2e6
+Author: Matteo Croce <mcroce@microsoft.com>
+Date:   Fri Jul 16 19:26:42 2021 +0530
+
+    lib/string: Optimized memset
+    
+    The generic memset is defined as a byte at time write.  This is always
+    safe, but it's slower than a 4 byte or even 8 byte write.
+    
+    Write a generic memset which fills the data one byte at time until the
+    destination is aligned, then fills using the largest size allowed, and
+    finally fills the remaining data one byte at time.
+    
+    On a RISC-V machine the speed goes from 140 Mb/s to 241 Mb/s, and this the
+    binary size increase according to bloat-o-meter:
+    
+    Function     old   new   delta
+    memset        32   148    +116
+    
+    Link: https://lkml.kernel.org/r/20210702123153.14093-4-mcroce@linux.microsoft.com
+    Signed-off-by: Matteo Croce <mcroce@microsoft.com>
+    Cc: Christoph Hellwig <hch@infradead.org>
+    Cc: David Laight <David.Laight@aculab.com>
+    Cc: Drew Fustini <drew@beagleboard.org>
+    Cc: Emil Renner Berthing <kernel@esmil.dk>
+    Cc: Guo Ren <guoren@kernel.org>
+    Cc: Nick Desaulniers <ndesaulniers@google.com>
+    Cc: Nick Kossifidis <mick@ics.forth.gr>
+    Cc: Palmer Dabbelt <palmer@dabbelt.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Stephen Rothwell <sfr@canb.auug.org.au>
+    Signed-off-by: Jebaitedneko <Jebaitedneko@gmail.com>
+    Signed-off-by: Forenche <prahul2003@gmail.com>

@@ -121,6 +121,10 @@ on:
         description: "应用 CVE-2026-43499 rtmutex 修复链"
         type: boolean
         default: false
+      use_performance_patches:
+        description: "启用 性能补丁（供应商补丁，无需外部依赖）"
+        type: boolean
+        default: false
 
       # ==================== 兼容性 ====================
       skip_incompatible:
@@ -183,6 +187,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_kpm: ${{ inputs.use_kpm }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       skip_incompatible: ${{ inputs.skip_incompatible || false }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       droidspaces_ntsync: ${{ contains(inputs.droidspaces, 'NTSync') }}
@@ -213,6 +218,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -243,6 +249,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -273,6 +280,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -303,6 +311,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -333,6 +342,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -363,6 +373,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -392,6 +403,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
@@ -421,6 +433,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel }}
       use_nomount: ${{ inputs.use_nomount }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
+      use_performance_patches: ${{ inputs.use_performance_patches }}
       ksu_mode: ${{ inputs.ksu_mode }}
       droidspaces: ${{ startsWith(inputs.droidspaces, '678') && '678' || startsWith(inputs.droidspaces, '123') && '123' || startsWith(inputs.droidspaces, '345') && '345' || 'off' }}
       artifact_upload_mode: ${{ inputs.artifact_upload_mode }}
