@@ -1,0 +1,159 @@
+From ca82046a8aacd7a39a81aa06e1ef8293097875bd Mon Sep 17 00:00:00 2001
+From: Wilco Dijkstra <wilco.dijkstra@arm.com>
+Date: Fri, 29 Oct 2021 15:39:00 +0100
+Subject: [PATCH] arm64: lib: Optimize memcmp
+
+Rewrite memcmp to improve performance. On small and medium inputs
+performance is typically 25% better. Large inputs use a SIMD loop
+processing 64 bytes per iteration, which is 50% faster than the
+previous version.
+
+Signed-off-by: Adithya R <gh0strider.2k18.reborn@gmail.com>
+Signed-off-by: Forenche <prahul2003@gmail.com>
+---
+ arch/arm64/lib/memcmp.S | 231 ++++++++++++++++++++++++----------------
+ 1 file changed, 142 insertions(+), 89 deletions(-)
+
+diff --git a/arch/arm64/lib/memcmp.S b/arch/arm64/lib/memcmp.S
+index a5ccf2c55f911..997cc53c35bb2 100644
+--- a/arch/arm64/lib/memcmp.S
++++ b/arch/arm64/lib/memcmp.S
+@@ -3,7 +3,7 @@
+  * Copyright (c) 2013-2021, Arm Limited.
+  *
+  * Adapted from the original at:
+- * https://github.com/ARM-software/optimized-routines/blob/e823e3abf5f89ecb/string/aarch64/memcmp.S
++ * https://github.com/ARM-software/optimized-routines/blob/7a9fd1603e/string/aarch64/memcmp.S
+  */
+ 
+ #include <linux/linkage.h>
+@@ -16,90 +16,70 @@
+ 
+ #define L(label) .L ## label
+ 
+-/* Parameters and result.  */
+-#define src1		x0
+-#define src2		x1
+-#define limit		x2
+-#define result		w0
+-
+-/* Internal variables.  */
+-#define data1		x3
+-#define data1w		w3
+-#define data1h		x4
+-#define data2		x5
+-#define data2w		w5
+-#define data2h		x6
+-#define tmp1		x7
+-#define tmp2		x8
++#define src1	x0
++#define src2	x1
++#define limit	x2
++#define result	w0
++
++#define data1	x3
++#define data1w	w3
++#define data2	x4
++#define data2w	w4
++#define data3	x5
++#define data3w	w5
++#define data4	x6
++#define data4w	w6
++#define tmp	x6
++#define src1end	x7
++#define src2end	x8
+ 
+ SYM_FUNC_START(__pi_memcmp)
+-	subs	limit, limit, 8
+-	b.lo	L(less8)
+ 
+-	ldr	data1, [src1], 8
+-	ldr	data2, [src2], 8
+-	cmp	data1, data2
+-	b.ne	L(return
+s2)
++	ldrh	data1w, [src1]
++	ldrh	data2w, [src2]
+ 	cmp	data1w, data2w
+ 	b.ne	L(return)
+-	sub	limit, limit, 4
+-L(less4):
+-	adds	limit, limit, 4
+-	beq	L(ret_eq)
+-L(byte_loop):
+-	ldrb	data1w, [src1], 1
+-	ldrb	data2w, [src2], 1
+-	subs	limit, limit, 1
+-	ccmp	data1w, data2w, 0, ne	/* NZCV = 0b0000.  */
+-	b.eq	L(byte_loop)
++L(less2):
++	mov	result, 0
++	tbz	limit, 0, L(return_zero)
++	ldrb	data1w, [src1end, -1]
++	ldrb	data2w, [src2end, -1]
+ 	sub	result, data1w, data2w
++L(return_zero):
++	ret
++
++L(loop_align):
++	ldp	data1, data3, [src1, 16]
++	ldp	data2, data4, [src2, 16]
++	cmp	data1, data2
++	ccmp	data3, data4, 0, eq
++	b.ne	L(return2)
++
++	/* Align src2 and adjust src1, src2 and limit.  */
++	and	tmp, src2, 15
++	sub	tmp, tmp, 16
++	sub	src2, src2, tmp
++	add	limit, limit, tmp
++	sub	src1, src1, tmp
++	sub	limit, limit, 64 + 16
++
++	.p2align 4
++L(loop64):
++	ldr	q0, [src1, 16]
++	ldr	q1, [src2, 16]
++	subs	limit, limit, 64
++	ldr	q2, [src1, 32]
++	ldr	q3, [src2, 32]
++	eor	v0.16b, v0.16b, v1.16b
++	eor	v1.16b, v2.16b, v3.16b
++	ldr	q2, [src1, 48]
++	ldr	q3, [src2, 48]
++	umaxp	v0.16b, v0.16b, v1.16b
++	ldr	q4, [src1, 64]!
++	ldr	q5, [src2, 64]!
++	eor	v1.16b, v2.16b, v3.16b
++	eor	v2.16b, v4.16b, v5.16b
++	umaxp	v1.16b, v1.16b, v2.16b
++	umaxp	v0.16b, v0.16b, v1.16b
++	umaxp	v0.16b, v0.16b, v0.16b
++	fmov	tmp, d0
++	ccmp	tmp, 0, 0, hi
++	b.eq	L(loop64)
++
++	/* If equal, process last 1-64 bytes using scalar loop.  */
++	add	limit, limit, 64 + 16
++	cbz	tmp, L(last64)
++
++	/* Determine the 8-byte aligned offset of the first difference.  */
++#ifdef __AARCH64EB__
++	rev16	tmp, tmp
++#endif
++	rev	tmp, tmp
++	clz	tmp, tmp
++	bic	tmp, tmp, 7
++	sub	tmp, tmp, 48
++	ldr	data1, [src1, tmp]
++	ldr	data2, [src2, tmp]
++#ifndef __AARCH64EB__
++	rev	data1, data1
++	rev	data2, data2
++#endif
++	mov	result, 1
++	cmp	data1, data2
++	cneg	result, result, lo
+ 	ret
+ SYM_FUNC_END(__pi_memcmp)
+ SYM_FUNC_ALIAS_WEAK(memcmp, __pi_memcmp)

@@ -98,6 +98,11 @@ on:
         required: false
         type: boolean
         default: false
+      use_performance_patches:
+        description: "启用 性能补丁（供应商补丁，无需外部依赖）"
+        required: false
+        type: boolean
+        default: false
       enable_susfs:
         required: true
         type: boolean
@@ -162,6 +167,7 @@ jobs:
           echo "NoMount 元模块: ${{ inputs.use_nomount && '开启' || '关闭' }}"
           echo "Re-Kernel     : ${{ inputs.use_rekernel }}"
           echo "CVE-2026-43499: ${{ inputs.cve_2026_43499_patch }}"
+          echo "性能补丁      : ${{ inputs.use_performance_patches }}"
           echo "Droidspaces   : ${{ inputs.droidspaces }}"
           echo "NTSync        : ${{ inputs.droidspaces_ntsync }}"
           echo "兼容跳过      : ${{ inputs.skip_incompatible }}"
@@ -1770,6 +1776,79 @@ jobs:
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
           CONFIG_KSU_SUSFS_SUS_MAP=y
           EOF
+
+      - name: 应用 性能补丁
+        if: inputs.use_performance_patches
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          KERNEL_VERSION="${{ inputs.kernel_version }}"
+          MIN_VERSION="5.16"
+          PATCH_DIR="${{ github.workspace }}/.github/patches/performance"
+          FAILED_PATCHES=""
+
+          apply_patch() {
+            local name="$1"
+            local file="$2"
+            local extra_args="$3"
+            if patch -p1 --forward $extra_args < "$PATCH_DIR/$file" 2>/dev/null; then
+              echo "[+] Applied: $name"
+            else
+              echo "[!] Skipped: $name (does not apply on this kernel version)"
+              FAILED_PATCHES="$FAILED_PATCHES $name"
+            fi
+          }
+
+          apply_patch "optimized_mem_operations" "optimized_mem_operations.patch"
+          apply_patch "file_struct_8bytes_align" "file_struct_8bytes_align.patch"
+          apply_patch "reduce_cache_pressure" "reduce_cache_pressure.patch"
+
+          apply_patch "mem_opt_prefetch" "mem_opt_prefetch.patch"
+
+          if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | tail -n1)" = "$KERNEL_VERSION" ]; then
+            apply_patch "optimise_memcmp" "optimise_memcmp.patch"
+          elif [ "$(printf '%s\n' "$KERNEL_VERSION" "5.11" | sort -V | tail -n1)" = "$KERNEL_VERSION" ]; then
+            sed -e 's/SYM_FUNC_START(__pi_memcmp)/SYM_FUNC_START_WEAK_PI(memcmp)/' -e 's/SYM_FUNC_END(__pi_memcmp)/SYM_FUNC_END_PI(memcmp)/' -e 's/SYM_FUNC_ALIAS_WEAK(memcmp, __pi_memcmp)/EXPORT_SYMBOL_NOKASAN(memcmp)/' "$PATCH_DIR/optimise_memcmp.patch" | patch -p1 --forward 2>/dev/null && echo "[+] Applied: optimise_memcmp (5.11 variant)" || { echo "[!] Skipped: optimise_memcmp (5.11 variant)"; FAILED_PATCHES="$FAILED_PATCHES optimise_memcmp"; }
+          else
+            echo "[!] Skipped: optimise_memcmp (unsupported kernel version $KERNEL_VERSION)"
+            FAILED_PATCHES="$FAILED_PATCHES optimise_memcmp"
+          fi
+
+          apply_patch "minimise_wakeup_time" "minimise_wakeup_time.patch"
+          apply_patch "int_sqrt" "int_sqrt.patch"
+          apply_patch "reduce_gc_thread_sleep_time" "reduce_gc_thread_sleep_time.patch"
+          apply_patch "add_timeout_wakelocks_globally" "add_timeout_wakelocks_globally.patch"
+          apply_patch "f2fs_reduce_congestion" "f2fs_reduce_congestion.patch"
+          apply_patch "reduce_freeze_timeout" "reduce_freeze_timeout.patch"
+
+          if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
+            apply_patch "clear_page_16bytes_align" "clear_page_16bytes_align.patch"
+          else
+            cat "$PATCH_DIR/clear_page_16bytes_align.patch" | sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START_PI(__pi_clear_page)/' | patch -p1 -F3 --forward 2>/dev/null && echo "[+] Applied: clear_page_16bytes_align (transformed)" || { echo "[!] Skipped: clear_page_16bytes_align (transformed)"; FAILED_PATCHES="$FAILED_PATCHES clear_page_16bytes_align"; }
+          fi
+
+          echo "Patching avoid_extra_s2idle_wake_attempts.patch"
+          FILE="drivers/base/power/wakeup.c"
+          if grep -q "^void pm_system_wakeup(void)" "$FILE"; then
+            if sed -n '/^void pm_system_wakeup(void)/,/^}/p' "$FILE" | grep -q 'suspend_abort_fs_sync();'; then
+              sed -i '/^void pm_system_wakeup(void)/,/^}/{
+                /suspend_abort_fs_sync();/d
+              }' "$FILE"
+            fi
+          fi
+          apply_patch "avoid_extra_s2idle_wake_attempts" "avoid_extra_s2idle_wake_attempts.patch" "-F3"
+          apply_patch "disable_cache_hot_buddy" "disable_cache_hot_buddy.patch" "-F3"
+          apply_patch "f2fs_enlarge_min_fsync_blocks" "f2fs_enlarge_min_fsync_blocks.patch" "-F3"
+          apply_patch "increase_ext4_default_commit_age" "increase_ext4_default_commit_age.patch" "-F3"
+          apply_patch "increase_sk_mem_packets" "increase_sk_mem_packets.patch" "-F3"
+          apply_patch "reduce_pci_pme_wakeups" "reduce_pci_pme_wakeups.patch" "-F3"
+          apply_patch "silence_irq_cpu_logspam" "silence_irq_cpu_logspam.patch" "-F3"
+          apply_patch "silence_system_logspam" "silence_system_logspam.patch" "-F3"
+
+          if [ -n "$FAILED_PATCHES" ]; then
+            echo "[!] Some patches did not apply:$FAILED_PATCHES"
+          else
+            echo "[+] All performance patches applied successfully"
+          fi
 
       - name: 配置内核名称
         working-directory: ${{ env.KERNEL_ROOT }}
