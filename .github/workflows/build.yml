@@ -1785,6 +1785,106 @@ jobs:
           CONFIG_KSU_SUSFS_SUS_MAP=y
           EOF
 
+      - name: Apply USB-Arsenal patches and config
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          # USB-Arsenal: ravindu644/USB-Arsenal kernel patches + gadget/NAT config.
+          # Maps kernel version to patch directory; prefers local overrides under
+          # .github/patches/usb-arsenal/{android}-{kernel}, falls back to cloning
+          # upstream. Patches already present in the tree (>=90% of added lines
+          # exist) are skipped via usb_arsenal_already_present.py. Patch failures
+          # are warnings, not fatal, unless no patch applies at all.
+          set -euo pipefail
+
+          KERNEL_VERSION="${{ inputs.kernel_version }}"
+          ANDROID_VERSION="${{ inputs.android_version }}"
+          USB_ARSENAL_ROOT="$GITHUB_WORKSPACE/.github/patches/usb-arsenal"
+          LOCAL_PATCH_DIR="$USB_ARSENAL_ROOT/${ANDROID_VERSION}-${KERNEL_VERSION}"
+          APPLIED=0
+          SKIPPED=0
+          FAILED=()
+
+          case "$KERNEL_VERSION" in
+            5.10) USB_ARSENAL_DIR="kernel-patches/5.10" ;;
+            5.15|6.1) USB_ARSENAL_DIR="kernel-patches/5.15" ;;
+            6.6) USB_ARSENAL_DIR="kernel-patches/6.6" ;;
+            6.12|6.18) USB_ARSENAL_DIR="kernel-patches/6.12" ;;
+            *)
+              echo "::warning title=USB-Arsenal skipped::Kernel $KERNEL_VERSION has no USB-Arsenal patch directory, skipping"
+              exit 0
+              ;;
+          esac
+
+          if [ -d "$LOCAL_PATCH_DIR" ]; then
+            PATCH_DIR="$LOCAL_PATCH_DIR"
+            echo "Using local USB-Arsenal patches: $PATCH_DIR"
+          else
+            PATCH_DIR="$GITHUB_WORKSPACE/USB-Arsenal/$USB_ARSENAL_DIR"
+            if [ ! -d "$PATCH_DIR" ]; then
+              echo "Cloning USB-Arsenal repo..."
+              rm -rf "$GITHUB_WORKSPACE/USB-Arsenal"
+              if ! git clone --depth=1 https://github.com/ravindu644/USB-Arsenal.git "$GITHUB_WORKSPACE/USB-Arsenal"; then
+                echo "::error title=USB-Arsenal clone failed::Cannot clone ravindu644/USB-Arsenal, skipping USB-Arsenal feature"
+                exit 0
+              fi
+            fi
+            USB_ARSENAL_COMMIT=$(git -C "$GITHUB_WORKSPACE/USB-Arsenal" rev-parse HEAD 2>/dev/null || echo "unknown")
+            echo "USB-Arsenal source commit: $USB_ARSENAL_COMMIT"
+            echo "USBA_COMMIT=$USB_ARSENAL_COMMIT" >> "$GITHUB_ENV"
+          fi
+
+          for p in "$PATCH_DIR"/*.patch; do
+            [ -f "$p" ] || continue
+            name="$(basename "$p" .patch)"
+
+            # Skip if >=90% of added lines already exist in target files
+            if python3 "$GITHUB_WORKSPACE/.github/scripts/usb_arsenal_already_present.py" "$p" 2>/dev/null; then
+              echo "[+] Already present (skipped): $name"
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            if patch -p1 --forward < "$p" 2>/dev/null; then
+              echo "[+] Applied: $name"
+              APPLIED=$((APPLIED + 1))
+            else
+              echo "[!] Skipped: $name (does not apply on this kernel version)"
+              FAILED+=("$name")
+            fi
+          done
+
+          # Write USB gadget/NAT config to defconfig (idempotent: no duplicates)
+          append_usb_config() {
+            local cfg="$1"
+            if ! grep -q "^${cfg}=y" "$DEFCONFIG"; then
+              sed -i "/^# ${cfg} is not set/d" "$DEFCONFIG" 2>/dev/null || true
+              echo "${cfg}=y" >> "$DEFCONFIG"
+            fi
+          }
+
+          append_usb_config CONFIG_USB_CONFIGFS
+          append_usb_config CONFIG_USB_CONFIGFS_MASS_STORAGE
+          append_usb_config CONFIG_USB_CONFIGFS_F_HID
+          append_usb_config CONFIG_USB_CONFIGFS_NCM
+          append_usb_config CONFIG_IP_NF_NAT
+          append_usb_config CONFIG_IP_NF_TARGET_MASQUERADE
+
+          # RNDIS only exists on 5.10, absent from 5.15+
+          if [ "$KERNEL_VERSION" = "5.10" ]; then
+            append_usb_config CONFIG_USB_CONFIGFS_RNDIS
+          fi
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::warning title=USB-Arsenal partially applied::${#FAILED[@]} patch(es) not applied: ${FAILED[*]}. Gadget config enabled; affected optional support missing."
+          fi
+
+          if [ "$APPLIED" -eq 0 ] && [ "$SKIPPED" -eq 0 ]; then
+            echo "::error title=USB-Arsenal no patch applied::No patch applied to $ANDROID_VERSION-$KERNEL_VERSION; PATCH_DIR mapping may be wrong ($PATCH_DIR)" >&2
+            exit 1
+          fi
+
+          echo "USB-Arsenal: $APPLIED applied, $SKIPPED already present, ${#FAILED[@]} not applicable"
+
       - name: 应用 性能补丁
         if: inputs.use_performance_patches
         working-directory: ${{ env.KERNEL_ROOT }}/common
