@@ -50,6 +50,11 @@ on:
         required: false
         type: string
         default: ""
+      manager_ver:
+        description: "管理器 versionCode（如 32730），作为内核命名版本；优先级高于按提交数推导的 KSU_VERSION"
+        required: false
+        type: string
+        default: ""
 
       # ==================== 可选配置 ====================
       version:
@@ -503,6 +508,9 @@ jobs:
             "FinaSU")
               BRANCH="-s master"
               ;;
+            "KernelSU")
+              BRANCH="-s main"
+              ;;
             "SukiSU-Nova")
               if [ "${{ inputs.enable_susfs }}" = "false" ]; then
                 BRANCH="main"
@@ -575,7 +583,7 @@ jobs:
                   echo "::error::未能在 $KSU_VERSION_SOURCE 中对齐 REPO_BRANCH（上游结构可能已变化），无法对齐管理器版本"
                   exit 1
                 fi
-                echo "SukiSU-Nova 内核侧版本来源已对齐官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30000 + $(git -C KernelSU rev-list --count "$KSU_COMMIT") + 996)))"
+                echo "SukiSU-Nova 内核侧版本来源已对齐官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30000 + $(git -C "$KERNEL_ROOT/KernelSU" rev-list --count "$KSU_COMMIT") + 996)))"
               fi
               bash "$GITHUB_WORKSPACE/scripts/ksu_post_setup.sh" KernelSU sukisu
               ;;
@@ -594,7 +602,7 @@ jobs:
                   echo "::error::KernelSU 检出官方构建提交 $KSU_COMMIT 失败，无法对齐管理器版本"
                   exit 1
                 fi
-                echo "KernelSU 已检出到官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30700 + $(git -C KernelSU rev-list --count HEAD))))"
+                echo "KernelSU 已检出到官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30700 + $(git -C "$KERNEL_ROOT/KernelSU" rev-list --count HEAD))))"
               fi
               bash "$GITHUB_WORKSPACE/scripts/ksu_post_setup.sh" KernelSU bakasu
               ;;
@@ -613,7 +621,7 @@ jobs:
                   echo "::error::KernelSU 检出官方构建提交 $KSU_COMMIT 失败，无法对齐管理器版本"
                   exit 1
                 fi
-                echo "KernelSU 已检出到官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30000 + $(git -C KernelSU rev-list --count HEAD))))"
+                echo "KernelSU 已检出到官方上传构建提交 $KSU_COMMIT (KSU 版本 $((30000 + $(git -C "$KERNEL_ROOT/KernelSU" rev-list --count HEAD))))"
               fi
               # FinaSU 自带的 kernel/setup.sh 仍克隆上游 tiann/KernelSU，此处手动完成
               # in-tree 集成：软链驱动目录并挂载 Makefile / Kconfig
@@ -681,14 +689,34 @@ jobs:
               # 必须在上方证书注入（awk 重写 Kbuild）之后调用
               bash "$GITHUB_WORKSPACE/scripts/ksu_post_setup.sh" KernelSU finasu
               ;;
+            "KernelSU")
+              echo "添加 ${{ inputs.ksu_variant }}..."
+              git clone https://github.com/tiann/KernelSU.git "$KERNEL_ROOT/KernelSU"
+              # 使用 KernelSU 官方 setup.sh 创建 drivers/kernelsu 符号链接
+              bash "$KERNEL_ROOT/KernelSU/kernel/setup.sh" main
+              # 应用 10_enable_susfs_for_ksu.patch 到 KernelSU 源码
+              cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" "$KERNEL_ROOT/KernelSU/"
+              cd "$KERNEL_ROOT/KernelSU" && patch -p1 < 10_enable_susfs_for_ksu.patch && cd "$KERNEL_ROOT"
+              # 复制 SUSFS 内核文件
+              mkdir -p "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
+              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/fs/susfs.c" "$KERNEL_ROOT/KernelSU/kernel/"
+              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
+              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs_def.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
+              # 应用 apply_kernelsu_susfs.py 集成 SUSFS 到 KernelSU 结构 (init.c, Kconfig, Kbuild)
+              python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply_kernelsu_susfs.py" "$KERNEL_ROOT/KernelSU" || {
+                echo "::error::apply_kernelsu_susfs.py 无法集成 SUSFS 到 KernelSU，构建中断"
+                exit 1
+              }
+              echo "原生 KernelSU SUSFS 支持已添加"
+              ;;
             *)
               echo "未知变体: ${{ inputs.ksu_variant }}" >&2
               exit 1
               ;;
           esac
 
-          if [ -d "KernelSU/.git" ]; then
-            KSU_LATEST_COMMIT_DATE=$(git -C KernelSU log -1 --date=format:'%Y-%m-%d %H:%M:%S %z' --format='%cd')
+          if [ -d "$KERNEL_ROOT/KernelSU/.git" ]; then
+            KSU_LATEST_COMMIT_DATE=$(git -C "$KERNEL_ROOT/KernelSU" log -1 --date=format:'%Y-%m-%d %H:%M:%S %z' --format='%cd')
             echo "KSU_LATEST_COMMIT_DATE=$KSU_LATEST_COMMIT_DATE" >> $GITHUB_ENV
           else
             echo "KSU_LATEST_COMMIT_DATE=未知" >> $GITHUB_ENV
@@ -699,12 +727,13 @@ jobs:
         run: |
           KSU_VERSION=""
           if [ -n "${{ inputs.ksu_commit }}" ] && [ -d KernelSU/.git ]; then
-            KSU_COUNT=$(git -C KernelSU rev-list --count "${{ inputs.ksu_commit }}" 2>/dev/null || echo "")
+            KSU_COUNT=$(git -C "$KERNEL_ROOT/KernelSU" rev-list --count "${{ inputs.ksu_commit }}" 2>/dev/null || echo "")
             if [ -n "$KSU_COUNT" ]; then
               case "${{ inputs.ksu_variant }}" in
                 SukiSU-Nova) KSU_VERSION=$((30000 + KSU_COUNT + 996)) ;;
                 BakaSU) KSU_VERSION=$((30700 + KSU_COUNT)) ;;
                 FinaSU) KSU_VERSION=$((30000 + KSU_COUNT)) ;;
+                KernelSU) KSU_VERSION=$((30000 + KSU_COUNT)) ;;
               esac
             fi
           fi
