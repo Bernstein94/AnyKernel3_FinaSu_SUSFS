@@ -968,6 +968,14 @@ jobs:
           enable_config_if_defined CONFIG_NETFILTER_XT_TARGET_REJECT
           enable_config_if_defined CONFIG_IP_NF_TARGET_REJECT
 
+          # 压力停滞信息 (PSI) - 内存/CPU/IO 压力监控，4.20+ 可用
+          enable_config_if_defined CONFIG_PSI
+          # 多代 LRU (MGLRU) - 内存回收优化，5.17+ 可用，5.10/5.15 会自动跳过
+          # 注意：正确的 Kconfig 符号是 CONFIG_LRU_GEN + CONFIG_LRU_GEN_ENABLED，
+          # 不是 CONFIG_MGLRU（那是旧名称，5.17+ 后改名）
+          enable_config_if_defined CONFIG_LRU_GEN
+          enable_config_if_defined CONFIG_LRU_GEN_ENABLED
+
           echo "Droidspaces 集成完成"
 
           echo "GKI6.6 普通用户联网专用配置 (Droidspaces)"
