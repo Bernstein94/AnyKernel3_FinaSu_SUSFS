@@ -1,0 +1,9 @@
+{
+  "previous_verified": {
+    "PIN_SUSFS_618_PORT": "local-618-port",
+    "PIN_SUSFS_KERNEL_PATCHES": "50_add_susfs_in_gki-android17-6.18.patch",
+    "PIN_KSU_10_ENABLE_SUSFS": "10_enable_susfs_for_ksu.patch",
+    "PIN_WILD_FIX_PATCHES": "v2.0.0"
+  },
+  "updated_at": "2026-11-20T00:00:00+00:00"
+}

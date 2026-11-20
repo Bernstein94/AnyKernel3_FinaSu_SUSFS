@@ -949,6 +949,95 @@ if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
   fi
 fi
 
+# ==================== WildKernels 修复补丁集成 ====================
+# 集成 WildKernels/kernel_patches 的 SUSFS 修复补丁和 KSU 钩子补丁
+# 这些补丁源自 WildKernels 自己的内核树，路径可能与当前 common/ 目录不一致。
+# 仅对目标文件存在的补丁尝试应用，失败时静默跳过，绝不中断构建。
+apply_wild_patch() {
+  local patch="$1"
+  local patch_name
+  patch_name=$(basename "$patch")
+
+  # 从 patch 中提取目标文件路径（取第一个 --- / +++ 行的路径，去掉 a/ b/ 前缀）
+  local target
+  target=$(grep -m1 '^diff --git ' "$patch" | sed 's/.* b\///' 2>/dev/null)
+  if [ -z "$target" ]; then
+    echo "  $patch_name 跳过：无法解析目标文件"
+    return 0
+  fi
+
+  # 路径映射：WildKernels 的 kernel/ 路径映射到 GKI 的 drivers/kernelsu/kernel/
+  local mapped_target="$target"
+  case "$target" in
+    kernel/core_hook.c) mapped_target="drivers/kernelsu/core/core_hook.c" ;;
+    kernel/kernel_compat.c) mapped_target="drivers/kernelsu/kernel/kernel_compat.c" ;;
+    kernel/sucompat.c) mapped_target="drivers/kernelsu/kernel/sucompat.c" ;;
+  esac
+
+  # 优先检查原始路径（GKI 可能直接在 kernel/ 目录下有这些文件）
+  local actual_target="$target"
+  if [ ! -f "$actual_target" ] && [ -f "$mapped_target" ]; then
+    actual_target="$mapped_target"
+  fi
+
+  # 目标文件必须存在于当前目录中才能打补丁
+  if [ ! -f "$actual_target" ]; then
+    echo "  $patch_name 跳过：目标文件不存在 ($target)"
+    return 0
+  fi
+
+  # 如果补丁目路径与实际路径不同，创建符号链接供 patch 使用
+  if [ "$target" != "$actual_target" ] && [ ! -e "$target" ]; then
+    ln -sf "../$actual_target" "$target" 2>/dev/null || true
+  fi
+
+  # 先干运行检查，失败则不尝试直接应用（完全静默，使用 --fuzz=2 容忍细微差异）
+  if ! patch --dry-run -p1 --fuzz=2 --reject-file=/dev/null < "$patch" >/dev/null 2>&1; then
+    # 清理可能创建的符号链接
+    [ "$target" != "$actual_target" ] && [ -L "$target" ] && rm -f "$target" 2>/dev/null || true
+    echo "  $patch_name 跳过：上下文不匹配"
+    return 0
+  fi
+
+  # 尝试应用补丁，失败则静默跳过（使用 --fuzz=2 容忍细微差异）
+  if ! patch -p1 --fuzz=2 --no-backup-if-mismatch --reject-file=/dev/null < "$patch" >/dev/null 2>&1; then
+    [ "$target" != "$actual_target" ] && [ -L "$target" ] && rm -f "$target" 2>/dev/null || true
+    echo "  $patch_name 跳过：应用失败"
+    return 0
+  fi
+
+  echo "  $patch_name 应用成功"
+}
+
+# WildKernels patches are only needed for KernelSU variant on android17-6.18.
+# SukiSU/BakaSU have built-in SUSFS; FinaSU has native tree integration.
+# These patches were written for WildKernels' own kernel tree and may conflict
+# with other variants' or other kernel versions' SUSFS implementations.
+if [ "$KSU_VARIANT" = "KernelSU" ] && [ "$ANDROID_VERSION" = "android17" ] && [ "$KERNEL_VERSION" = "6.18" ]; then
+  if [ -d "$SCRIPT_DIR/wild_fix_patches/v2.0.0" ]; then
+    for patch in "$SCRIPT_DIR/wild_fix_patches/v2.0.0"/*.patch; do
+      [ -f "$patch" ] || continue
+      apply_wild_patch "$patch" || true
+    done
+  fi
+
+  if [ -d "$SCRIPT_DIR/wild_hooks" ]; then
+    for patch in "$SCRIPT_DIR/wild_hooks"/*.patch; do
+      [ -f "$patch" ] || continue
+      apply_wild_patch "$patch" || true
+    done
+  fi
+
+  if [ -d "$SCRIPT_DIR/wild_bypass" ]; then
+    for patch in "$SCRIPT_DIR/wild_bypass"/*.patch; do
+      [ -f "$patch" ] || continue
+      apply_wild_patch "$patch" || true
+    done
+  fi
+else
+  echo "跳过 WildKernels 补丁（非 KernelSU android17-6.18 变体使用其自身的 SUSFS 集成）"
+fi
+
 # 守护：主补丁若再次因上下文漂移漏掉 susfs_def.h，在这里给出可读错误，
 # 而不是等到编译 fs/proc/task_mmu.c 时才报一串 SUSFS_IS_INODE_* 隐式声明
 for SUSFS_SRC in fs/proc/task_mmu.c fs/namespace.c; do

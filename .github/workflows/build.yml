@@ -318,6 +318,18 @@ jobs:
           if [ "${{ inputs.enable_susfs }}" != "true" ]; then
             echo "SUSFS 已禁用，跳过 SUSFS 仓库克隆"
             mkdir -p susfs4ksu
+          elif [ "$SUSFS_BRANCH" = "gki-android17-6.18" ]; then
+            echo "android17-6.18: no upstream SUSFS branch, using local 6.12->6.18 port"
+            rm -rf susfs4ksu
+            mkdir -p susfs4ksu/kernel_patches/fs susfs4ksu/kernel_patches/include/linux susfs4ksu/kernel_patches/KernelSU
+            cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/50_add_susfs_in_gki-android17-6.18.patch" susfs4ksu/kernel_patches/
+            cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/fs/susfs.c" susfs4ksu/kernel_patches/fs/
+            cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs.h" susfs4ksu/kernel_patches/include/linux/
+            cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs_def.h" susfs4ksu/kernel_patches/include/linux/
+            cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" susfs4ksu/kernel_patches/KernelSU/
+            echo "SUSFS_LATEST_COMMIT_DATE=local-618-port" >> "$GITHUB_ENV"
+            echo "SUSFS using local android17-6.18 port (not upstream clone)"
+          
           elif [ "${{ inputs.ksu_variant }}" == "SukiSU-Nova" ]; then
             if ! git clone https://github.com/ShirkNeko/susfs4ksu.git -b "$SUSFS_BRANCH" 2>/dev/null; then
               echo "ShirkNeko 仓库未找到分支 $SUSFS_BRANCH，回退到 simonpunk 原版..."
@@ -345,7 +357,7 @@ jobs:
 
           if [ -d susfs4ksu/.git ]; then
             SUSFS_LATEST_COMMIT_DATE=$(git -C susfs4ksu log -1 --date=format:'%Y-%m-%d %H:%M:%S %z' --format='%cd')
-          else
+          elif [ -z "${SUSFS_LATEST_COMMIT_DATE:-}" ]; then
             SUSFS_LATEST_COMMIT_DATE="未启用"
           fi
           echo "SUSFS_LATEST_COMMIT_DATE=$SUSFS_LATEST_COMMIT_DATE" >> $GITHUB_ENV
@@ -2204,6 +2216,7 @@ jobs:
           ZIP_NAME="${AK3_NAME}-AnyKernel3.zip"
           mv ../Image ./Image
           zip -r "../$ZIP_NAME" ./*
+          fi
 
       - name: 整理 AnyKernel3 刷入包 (仅上传模式)
         if: inputs.artifact_upload_mode != '上传全部'
