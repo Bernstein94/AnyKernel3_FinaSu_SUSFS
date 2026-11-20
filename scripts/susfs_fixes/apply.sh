@@ -351,14 +351,34 @@ python3 "$SCRIPT_DIR/normalize_trace_ctx.py" "$SUSFS_PATCH"
 # 让 SUSFS 主补丁在不同子版本上成功应用并编译。对 SukiSU/BakaSU/FinaSU 也是
 # 无害的（命中条件时执行，不命中时自动跳过）。
 
-# 1) android16-6.12 sublevel <= 92：适配 SUSFS 主补丁以匹配较旧的 fs/exec.c /
-#    fs/proc/task_mmu.c 形态，使 patch 能够正常应用。
+# 1) android16-6.12：按子版本拆分 SUSFS 兼容处理。
+#    KernelSU 变体：sublevel <= 92 用 apply_susfs_compat.py，sublevel > 92 用 susfs_fake_612.py。
+#    其他变体（SukiSU-Nova / BakaSU / FinaSU）：保持与 upstream main 完全一致的
+#    两个独立 if 块（sublevel <= 92 和 sublevel >= 92 均可匹配，sublevel 92 时两者皆执行）。
 # 注意：此时已 cd 到 $KERNEL_ROOT/common，路径用 $PWD 而非 $PWD/common。
 if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
   CURRENT_SUB="${SUB_LEVEL:-99999}"
-  if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -le 92 ]]; then
-    echo "应用 apply_susfs_compat.py 适配 android16-6.12 sublevel ${CURRENT_SUB}"
-    python3 "$SCRIPT_DIR/apply_susfs_compat.py" "$PWD" "$SUSFS_PATCH"
+  SUSFS_COMPAT_APPLIED=false
+  if [ "$KSU_VARIANT" = "KernelSU" ]; then
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -le 92 ]]; then
+      echo "应用 apply_susfs_compat.py 适配 android16-6.12 KernelSU sublevel ${CURRENT_SUB}（≤ 92，预 refactor 形态）"
+      python3 "$SCRIPT_DIR/apply_susfs_compat.py" "$PWD" "$SUSFS_PATCH"
+      SUSFS_COMPAT_APPLIED=true
+    else
+      echo "应用 susfs_fake_612.py apply（android16-6.12 KernelSU sublevel ${CURRENT_SUB}，> 92，post refactor 形态）"
+      python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" apply
+    fi
+  else
+    # SukiSU-Nova / BakaSU / FinaSU：与 upstream main 完全相同的子版本拆分
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -le 92 ]]; then
+      echo "应用 apply_susfs_compat.py 适配 android16-6.12 ${KSU_VARIANT} sublevel ${CURRENT_SUB}"
+      python3 "$SCRIPT_DIR/apply_susfs_compat.py" "$PWD" "$SUSFS_PATCH"
+      SUSFS_COMPAT_APPLIED=true
+    fi
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -ge 92 ]]; then
+      echo "应用 susfs_fake_612.py apply（android16-6.12 ${KSU_VARIANT} sublevel ${CURRENT_SUB}）"
+      python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" apply
+    fi
   fi
 fi
 
@@ -373,20 +393,32 @@ if [[ "$ANDROID_VERSION" == "android15" && "$KERNEL_VERSION" == "6.6" ]]; then
   fi
 fi
 
-# 3) android16-6.12 sublevel >= 92：将 show_smaps_rollup 改为 pre-refactor 形态，
-#    以匹配 SUSFS 主补丁的 hunk 期望（patch 前 apply，patch 后 revert）。
+
+
 if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
   CURRENT_SUB="${SUB_LEVEL:-99999}"
-  if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -ge 92 ]]; then
-    echo "应用 susfs_fake_612.py apply（android16-6.12 sublevel ${CURRENT_SUB}）"
-    python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" apply
+  if [ "$SUSFS_COMPAT_APPLIED" = "true" ]; then
+    # apply_susfs_compat.py 已在上面应用了适配后的主补丁，此处跳过重复应用
+    echo "跳过主补丁应用：apply_susfs_compat.py 已在子版本 ${CURRENT_SUB}（≤ 92）中应用"
+  else
+    if [ "$KSU_VARIANT" = "KernelSU" ]; then
+      patch --batch --forward -p1 < "$SUSFS_PATCH" || {
+        echo "::error::SUSFS 主补丁应用失败（$SUSFS_PATCH），内核将缺少 SUSFS 支持" >&2
+        exit 1
+      }
+    else
+      patch -p1 < "$SUSFS_PATCH" || {
+        echo "::error::SUSFS 主补丁应用失败（$SUSFS_PATCH），内核将缺少 SUSFS 支持" >&2
+        exit 1
+      }
+    fi
   fi
+else
+  patch -p1 < "$SUSFS_PATCH" || {
+    echo "::error::SUSFS 主补丁应用失败（$SUSFS_PATCH），内核将缺少 SUSFS 支持" >&2
+    exit 1
+  }
 fi
-
-patch -p1 < "$SUSFS_PATCH" || {
-  echo "::error::SUSFS 主补丁应用失败（$SUSFS_PATCH），内核将缺少 SUSFS 支持" >&2
-  exit 1
-}
 
 # patch 后 revert 临时形态
 if [[ "$ANDROID_VERSION" == "android15" && "$KERNEL_VERSION" == "6.6" ]]; then
@@ -398,8 +430,15 @@ fi
 
 if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
   CURRENT_SUB="${SUB_LEVEL:-99999}"
-  if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -ge 92 ]]; then
-    python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" revert || true
+  if [ "$KSU_VARIANT" = "KernelSU" ]; then
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -gt 92 ]]; then
+      python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" revert || true
+    fi
+  else
+    # SukiSU-Nova / BakaSU / FinaSU：与 upstream main 完全一致
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -ge 92 ]]; then
+      python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" revert || true
+    fi
   fi
 fi
 

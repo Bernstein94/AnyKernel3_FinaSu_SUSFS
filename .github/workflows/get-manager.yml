@@ -795,9 +795,9 @@ jobs:
         if: inputs.ksu_mode == '关闭'
         continue-on-error: true
         run: |
-          # 上游 susfs4ksu-module 的 Actions artifacts 已全部过期，
-          # 模块现通过 GitHub Releases 发布，改为拉取最新 Release 资产
-          RELEASE_API="https://api.github.com/repos/sidex15/susfs4ksu-module/releases/latest"
+          # 所有变体统一从 BRENE 仓库的最新 Release 获取 SUSFS 模块
+          echo "从 BRENE 仓库获取最新 SUSFS 模块 Release..."
+          RELEASE_API="https://api.github.com/repos/rrr333nnn333/BRENE/releases/latest"
           RELEASE_JSON=""
           for ATTEMPT in 1 2 3; do
             RELEASE_JSON=$(curl -s --fail --max-time 30 \
@@ -807,27 +807,27 @@ jobs:
             sleep 5
           done
           if [ -z "$RELEASE_JSON" ]; then
-            echo "无法获取 susfs4ksu-module 最新 Release 信息"
+            echo "无法获取 BRENE 最新 Release 信息"
             exit 1
           fi
 
           TAG_NAME=$(printf '%s' "$RELEASE_JSON" | jq -r '.tag_name')
-          ASSET_URL=$(printf '%s' "$RELEASE_JSON" | jq -r '.assets[] | select((.name | contains("ksu_module_susfs")) and (.name | endswith(".zip"))) | .browser_download_url' | head -n 1)
+          ASSET_URL=$(printf '%s' "$RELEASE_JSON" | jq -r '.assets[] | select((.name | contains("BRENE")) and (.name | endswith(".zip"))) | .browser_download_url' | head -n 1)
 
           if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Release $TAG_NAME 中未找到 ksu_module_susfs 模块 zip"
+            echo "Release $TAG_NAME 中未找到 BRENE 模块 zip"
             exit 1
           fi
 
-          NAME="ksu_module_susfs.zip"
-          echo "下载 SUSFS 模块: $NAME (Release $TAG_NAME)"
+          NAME="BRENE-${TAG_NAME}.zip"
+          echo "下载 SUSFS 模块: $NAME (BRENE Release $TAG_NAME)"
           if ! curl -sL --fail --retry 3 --max-time 120 -o "$NAME" "$ASSET_URL"; then
             echo "下载 SUSFS 模块失败: $ASSET_URL"
             exit 1
           fi
-          echo "SUSFS_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "SUSFS_NAME=BRENE-${TAG_NAME}" >> $GITHUB_ENV
 
-          # 校验后解压到模块目录：产物下载即模块本身，不再套一层 zip
+          # 校验后解压到模块目录
           if ! unzip -t "$NAME" >/dev/null 2>&1; then
             echo "下载的 SUSFS 模块 zip 损坏"
             exit 1
@@ -905,7 +905,7 @@ jobs:
           flag() { [ "$1" = "true" ] && echo "✅ 启用" || echo "➖ 关闭"; }
 
           if [ "${{ inputs.ksu_mode }}" = "关闭" ]; then
-            SUS_ROW="✅ 启用"
+            SUS_ROW="✅ 启用 (${{ env.SUSFS_NAME }})"
           else
             SUS_ROW="⛔ 禁用"
           fi
