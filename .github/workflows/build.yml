@@ -936,7 +936,10 @@ jobs:
             echo "::error::未找到 Droidspaces 补丁文件: $PATCH_FILE"
             exit 1
           fi
-          if ! patch -p1 --forward < "$PATCH_FILE"; then
+          SYSVIPC_PATCHED=false
+          if patch -p1 --forward < "$PATCH_FILE"; then
+            SYSVIPC_PATCHED=true
+          else
             echo "::warning::SYSVIPC kABI 补丁应用失败，可能已应用或上下文不匹配"
           fi
 
@@ -993,8 +996,13 @@ jobs:
             fi
           }
 
-          # 必要配置
-          enable_config CONFIG_SYSVIPC
+          # 必要配置：仅在 SYSVIPC kABI 补丁成功应用后启用 CONFIG_SYSVIPC，
+          # 避免 task_struct 缺少 sysvsem/sysvshm 成员导致编译失败
+          if [ "$SYSVIPC_PATCHED" = "true" ]; then
+            enable_config CONFIG_SYSVIPC
+          else
+            echo "::warning::CONFIG_SYSVIPC 未启用：SYSVIPC kABI 补丁未成功应用，跳过以避免编译失败"
+          fi
           enable_config CONFIG_POSIX_MQUEUE
           enable_config CONFIG_IPC_NS
           enable_config CONFIG_PID_NS
