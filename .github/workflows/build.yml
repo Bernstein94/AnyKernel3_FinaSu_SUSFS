@@ -341,6 +341,39 @@ jobs:
               || susfs_branch_missing "$SUSFS_BRANCH"
           fi
 
+          # 如果上游克隆成功但缺少补丁文件，回退到 vendored 备份（fail-safe）
+          if [ -d susfs4ksu/.git ]; then
+            SUSFS_VERSION="${SUSFS_BRANCH#gki-}"
+            VENDORED_PATCH_DIR="$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs4ksu/kernel_patches/$SUSFS_VERSION"
+            # 检查所有必需的 SUSFS 补丁文件，任一缺失则全部回退到 vendored 备份
+            SUSFS_MISSING=0
+            for f in \
+              "kernel_patches/50_add_susfs_in_gki-${SUSFS_VERSION}.patch" \
+              "fs/susfs.c" \
+              "include/linux/susfs.h" \
+              "include/linux/susfs_def.h" \
+              "KernelSU/10_enable_susfs_for_ksu.patch"; do
+              if [ ! -f "susfs4ksu/$f" ]; then
+                SUSFS_MISSING=1
+                break
+              fi
+            done
+            if [ "$SUSFS_MISSING" -eq 1 ]; then
+              echo "上游缺少 SUSFS 补丁文件，回退到 vendored 备份..."
+              if [ -d "$VENDORED_PATCH_DIR" ]; then
+                mkdir -p susfs4ksu/kernel_patches/fs susfs4ksu/kernel_patches/include/linux susfs4ksu/kernel_patches/KernelSU
+                cp "$VENDORED_PATCH_DIR/50_add_susfs_in_gki-${SUSFS_VERSION}.patch" susfs4ksu/kernel_patches/ 2>/dev/null || true
+                cp "$VENDORED_PATCH_DIR/fs/susfs.c" susfs4ksu/kernel_patches/fs/ 2>/dev/null || true
+                cp "$VENDORED_PATCH_DIR/include/linux/susfs.h" susfs4ksu/kernel_patches/include/linux/ 2>/dev/null || true
+                cp "$VENDORED_PATCH_DIR/include/linux/susfs_def.h" susfs4ksu/kernel_patches/include/linux/ 2>/dev/null || true
+                cp "$VENDORED_PATCH_DIR/KernelSU/10_enable_susfs_for_ksu.patch" susfs4ksu/kernel_patches/KernelSU/ 2>/dev/null || true
+                echo "已从 vendored 备份恢复 $SUSFS_VERSION 补丁文件"
+              else
+                echo "::warning::vendored 备份也不存在: $VENDORED_PATCH_DIR"
+              fi
+            fi
+          fi
+
           CONFIG_FILE="config/config"
           if [ -f "$CONFIG_FILE" ] && [ -d susfs4ksu/.git ]; then
             CUSTOM_ENABLED=$(grep "^custom=" "$CONFIG_FILE" | cut -d'=' -f2)
