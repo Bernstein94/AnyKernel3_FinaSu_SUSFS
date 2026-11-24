@@ -998,15 +998,14 @@ jobs:
 
           # 必要配置：仅在 SYSVIPC kABI 补丁成功应用后启用 CONFIG_SYSVIPC，
           # 避免 task_struct 缺少 sysvsem/sysvshm 成员导致编译失败
-          if [ "$SYSVIPC_PATCHED" = "true" ]; then
-            enable_config CONFIG_SYSVIPC
-          else
-            echo "::warning::CONFIG_SYSVIPC 未启用：SYSVIPC kABI 补丁未成功应用，跳过以避免编译失败"
-          fi
-          enable_config CONFIG_POSIX_MQUEUE
-          enable_config CONFIG_IPC_NS
-          enable_config CONFIG_PID_NS
-          enable_config CONFIG_DEVTMPFS
+          enable_config_if_defined CONFIG_SYSVIPC
+          enable_config_if_defined CONFIG_POSIX_MQUEUE
+          enable_config_if_defined CONFIG_IPC_NS
+          enable_config_if_defined CONFIG_PID_NS
+          enable_config_if_defined CONFIG_NET_NS
+          enable_config_if_defined CONFIG_MACVLAN
+          enable_config_if_defined CONFIG_DEVTMPFS
+          enable_config_if_defined CONFIG_USER_NS
 
           # 可选: 网络相关配置 (Docker/NAT 模式)
           enable_config_if_defined CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
@@ -1031,8 +1030,9 @@ jobs:
 
           echo "Droidspaces 集成完成"
 
-          echo "GKI6.6 普通用户联网专用配置 (Droidspaces)"
-          # 专门处理 =n 类型的配置（安卓网络权限必须关闭）
+          # 关闭安卓严格网络控制（必须）
+          # Droidspaces 容器内非特权用户需要创建网络套接字，PARANOID_NETWORK 会阻止
+          # 未特权用户访问网络，导致容器网络失效，因此必须禁用。
           disable_config() {
             local cfg="$1"
             if grep -q "^${cfg}=n" "$DEFCONFIG"; then
@@ -1046,12 +1046,7 @@ jobs:
             fi
           }
 
-          if [[ "${{ inputs.android_version }}" == "android15" && "${{ inputs.kernel_version }}" == "6.6" ]]; then
-            # 1. 开启用户命名空间（必须）
-            # enable_config_if_defined CONFIG_USER_NS
-            # 2. 关闭安卓严格网络控制（必须）
-            disable_config CONFIG_ANDROID_PARANOID_NETWORK
-          fi
+          disable_config CONFIG_ANDROID_PARANOID_NETWORK
 
       - name: 注入 NTSync 内核配置
         if: inputs.droidspaces != 'off' && inputs.droidspaces_ntsync && env.DROIDSPACES_SKIPPED != 'true'
