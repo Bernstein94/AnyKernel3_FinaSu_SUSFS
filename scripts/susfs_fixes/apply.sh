@@ -353,8 +353,8 @@ python3 "$SCRIPT_DIR/normalize_trace_ctx.py" "$SUSFS_PATCH"
 
 # 1) android16-6.12：按子版本拆分 SUSFS 兼容处理。
 #    KernelSU 变体：sublevel <= 92 用 apply_susfs_compat.py，sublevel > 92 用 susfs_fake_612.py。
-#    其他变体（SukiSU-Nova / BakaSU / FinaSU）：保持与 upstream main 完全一致的
-#    两个独立 if 块（sublevel <= 92 和 sublevel >= 92 均可匹配，sublevel 92 时两者皆执行）。
+#    其他变体（SukiSU-Nova / BakaSU / FinaSU）：与 KernelSU 变体保持同一互斥拆分。
+#    顺序：susfs_fake_612.py apply → patch -p1 → revert（与文档一致）。
 # 注意：此时已 cd 到 $KERNEL_ROOT/common，路径用 $PWD 而非 $PWD/common。
 if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
   CURRENT_SUB="${SUB_LEVEL:-99999}"
@@ -375,7 +375,7 @@ if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
       python3 "$SCRIPT_DIR/apply_susfs_compat.py" "$PWD" "$SUSFS_PATCH"
       SUSFS_COMPAT_APPLIED=true
     fi
-    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -ge 92 ]]; then
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -gt 92 ]]; then
       echo "应用 susfs_fake_612.py apply（android16-6.12 ${KSU_VARIANT} sublevel ${CURRENT_SUB}）"
       python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" apply
     fi
@@ -402,7 +402,7 @@ if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
     echo "跳过主补丁应用：apply_susfs_compat.py 已在子版本 ${CURRENT_SUB}（≤ 92）中应用"
   else
     if [ "$KSU_VARIANT" = "KernelSU" ]; then
-      patch --batch --forward -p1 < "$SUSFS_PATCH" || {
+      patch -p1 < "$SUSFS_PATCH" || {
         echo "::error::SUSFS 主补丁应用失败（$SUSFS_PATCH），内核将缺少 SUSFS 支持" >&2
         exit 1
       }
@@ -435,8 +435,9 @@ if [[ "$ANDROID_VERSION" == "android16" && "$KERNEL_VERSION" == "6.12" ]]; then
       python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" revert || true
     fi
   else
-    # SukiSU-Nova / BakaSU / FinaSU：与 upstream main 完全一致
-    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -ge 92 ]]; then
+    # SukiSU-Nova / BakaSU / FinaSU：与 KernelSU 变体保持同一互斥拆分。
+    # sublevel > 92 执行 revert，与 apply 阶段的 -gt 92 保持对称。
+    if [[ "$CURRENT_SUB" =~ ^[0-9]+$ ]] && [[ "$CURRENT_SUB" -gt 92 ]]; then
       python3 "$SCRIPT_DIR/susfs_fake_612.py" "$PWD/fs/proc/task_mmu.c" revert || true
     fi
   fi
@@ -492,7 +493,7 @@ path = sys.argv[1]
 with open(path, encoding="utf-8", errors="surrogateescape") as f:
     text = f.read()
 
-match = re.search(r"void susfs_security_compute_av_user\(", text)
+match = re.search(r"void susfs_security_compute_av_user\([^;]*\{", text)
 if not match:
     raise SystemExit("SUSFS AV helper not found")
 end = text.find("\n}\n", match.start())

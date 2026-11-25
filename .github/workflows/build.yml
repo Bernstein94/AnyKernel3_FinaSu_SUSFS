@@ -772,20 +772,25 @@ jobs:
               git clone https://github.com/tiann/KernelSU.git "$KERNEL_ROOT/KernelSU"
               # 使用 KernelSU 官方 setup.sh 创建 drivers/kernelsu 符号链接
               bash "$KERNEL_ROOT/KernelSU/kernel/setup.sh" main
-              # 应用 10_enable_susfs_for_ksu.patch 到 KernelSU 源码
-              cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" "$KERNEL_ROOT/KernelSU/"
-              cd "$KERNEL_ROOT/KernelSU" && patch -p1 < 10_enable_susfs_for_ksu.patch && cd "$KERNEL_ROOT"
-              # 复制 SUSFS 内核文件
-              mkdir -p "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
-              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/fs/susfs.c" "$KERNEL_ROOT/KernelSU/kernel/"
-              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
-              cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs_def.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
-              # 应用 apply_kernelsu_susfs.py 集成 SUSFS 到 KernelSU 结构 (init.c, Kconfig, Kbuild)
-              python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply_kernelsu_susfs.py" "$KERNEL_ROOT/KernelSU" || {
-                echo "::error::apply_kernelsu_susfs.py 无法集成 SUSFS 到 KernelSU，构建中断"
-                exit 1
-              }
-              echo "原生 KernelSU SUSFS 支持已添加"
+              # SUSFS 集成：仅在启用 SUSFS 时应用驱动侧补丁与内核文件
+              if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+                # 应用 10_enable_susfs_for_ksu.patch 到 KernelSU 源码
+                cp "$GITHUB_WORKSPACE/.github/patches/susfs-ksu/10_enable_susfs_for_ksu.patch" "$KERNEL_ROOT/KernelSU/"
+                cd "$KERNEL_ROOT/KernelSU" && patch -p1 < 10_enable_susfs_for_ksu.patch && cd "$KERNEL_ROOT"
+                # 复制 SUSFS 内核文件
+                mkdir -p "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
+                cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/fs/susfs.c" "$KERNEL_ROOT/KernelSU/kernel/"
+                cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
+                cp "$GITHUB_WORKSPACE/scripts/susfs_fixes/susfs618_kernel_patches/include/linux/susfs_def.h" "$KERNEL_ROOT/KernelSU/kernel/include/linux/"
+                # 应用 apply_kernelsu_susfs.py 集成 SUSFS 到 KernelSU 结构 (init.c, Kconfig, Kbuild)
+                python3 "$GITHUB_WORKSPACE/scripts/susfs_fixes/apply_kernelsu_susfs.py" "$KERNEL_ROOT/KernelSU" || {
+                  echo "::error::apply_kernelsu_susfs.py 无法集成 SUSFS 到 KernelSU，构建中断"
+                  exit 1
+                }
+                echo "原生 KernelSU SUSFS 支持已添加"
+              else
+                echo "SUSFS 已禁用：跳过 KernelSU SUSFS 补丁与内核文件"
+              fi
               ;;
             *)
               echo "未知变体: ${{ inputs.ksu_variant }}" >&2
@@ -799,69 +804,6 @@ jobs:
           else
             echo "KSU_LATEST_COMMIT_DATE=未知" >> $GITHUB_ENV
           fi
-
-      # 在内核源码和 KSU 准备完成后再获取 SUSFS，避免在前期集中拉取。
-      - name: 克隆 SUSFS 源码
-        if: inputs.enable_susfs && inputs.ksu_mode != '禁用KSU'
-        run: |
-          set -euo pipefail
-
-          clone_susfs() {
-            local repository="$1" rc
-            rm -rf -- susfs4ksu || return 1
-            if git clone "$repository" -b "$SUSFS_BRANCH" susfs4ksu; then
-              return 0
-            else
-              rc=$?
-            fi
-            rm -rf -- susfs4ksu || return 1
-            return "$rc"
-          }
-
-          clone_susfs_with_retry() {
-            local attempt delay rc=1
-            for attempt in 1 2 3 4 5; do
-              echo "克隆 $1（第 $attempt/5 次）..."
-              if clone_susfs "$1"; then
-                return 0
-              else
-                rc=$?
-              fi
-              if [ "$attempt" -lt 5 ]; then
-                delay=$((15 * (1 << (attempt - 1)) + RANDOM % 10))
-                echo "::warning::克隆 $1 失败（退出码 $rc），${delay} 秒后重试"
-                sleep "$delay" || return 1
-              fi
-            done
-            return "$rc"
-          }
-
-          # 克隆失败直接报错，避免遗漏所选功能后继续构建。
-          susfs_clone_failed() {
-            echo "::error::无法获取 SUSFS 分支 $1"
-            exit 1
-          }
-
-          SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
-          echo "克隆 SUSFS (分支: $SUSFS_BRANCH)..."
-          clone_susfs_with_retry https://gitlab.com/simonpunk/susfs4ksu.git \
-            || susfs_clone_failed "$SUSFS_BRANCH"
-
-          CONFIG_FILE="config/config"
-          if [ -f "$CONFIG_FILE" ]; then
-            CUSTOM_ENABLED=$(grep "^custom=" "$CONFIG_FILE" | cut -d'=' -f2 || true)
-            if [ "$CUSTOM_ENABLED" == "true" ]; then
-              CUSTOM_COMMIT=$(grep "^${SUSFS_BRANCH}=" "$CONFIG_FILE" | cut -d'=' -f2 || true)
-              if [ -n "$CUSTOM_COMMIT" ]; then
-                echo "切换 SUSFS 到自定义提交: $CUSTOM_COMMIT"
-                git -C susfs4ksu checkout "$CUSTOM_COMMIT"
-              fi
-            fi
-          fi
-          echo "SUSFS 实际提交: $(git -C susfs4ksu rev-parse HEAD)"
-          SUSFS_LATEST_COMMIT_DATE=$(git -C susfs4ksu log -1 --date=format:'%Y-%m-%d %H:%M:%S %z' --format='%cd')
-          echo "SUSFS_LATEST_COMMIT_DATE=$SUSFS_LATEST_COMMIT_DATE" >> "$GITHUB_ENV"
-          echo "SUSFS 仓库最新提交日期: $SUSFS_LATEST_COMMIT_DATE"
 
       - name: 计算 AnyKernel3 命名版本
         working-directory: ${{ env.KERNEL_ROOT }}
