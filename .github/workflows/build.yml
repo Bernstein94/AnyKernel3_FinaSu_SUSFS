@@ -1089,13 +1089,43 @@ jobs:
           # 必要配置：仅在 SYSVIPC kABI 补丁成功应用后启用 CONFIG_SYSVIPC，
           # 避免 task_struct 缺少 sysvsem/sysvshm 成员导致编译失败
           enable_config_if_defined CONFIG_SYSVIPC
+
+          # IPC mechanisms
+          enable_config_if_defined CONFIG_SYSCTL
           enable_config_if_defined CONFIG_POSIX_MQUEUE
-          enable_config_if_defined CONFIG_IPC_NS
+
+          # Core namespace support (required for Droidspaces)
+          enable_config_if_defined CONFIG_NAMESPACES
           enable_config_if_defined CONFIG_PID_NS
+          enable_config_if_defined CONFIG_UTS_NS
+          enable_config_if_defined CONFIG_IPC_NS
+
+          # Network namespace and virtual networking
           enable_config_if_defined CONFIG_NET_NS
           enable_config_if_defined CONFIG_MACVLAN
+          enable_config_if_defined CONFIG_VETH
+          enable_config_if_defined CONFIG_BRIDGE
+
+          # Filesystem support for containers
           enable_config_if_defined CONFIG_DEVTMPFS
+          enable_config_if_defined CONFIG_FUSE_FS
+          enable_config_if_defined CONFIG_TUN
+          enable_config_if_defined CONFIG_OVERLAY_FS
+
+          # User namespaces (sandboxing)
           enable_config_if_defined CONFIG_USER_NS
+
+          # Seccomp support
+          enable_config_if_defined CONFIG_SECCOMP
+          enable_config_if_defined CONFIG_SECCOMP_FILTER
+
+          # IPv6 NAT for containers
+          enable_config_if_defined CONFIG_IP6_NF_NAT
+          enable_config_if_defined CONFIG_IP6_NF_TARGET_MASQUERADE
+
+          # tmpfs POSIX ACL and xattr (for NixOS support)
+          enable_config_if_defined CONFIG_TMPFS_POSIX_ACL
+          enable_config_if_defined CONFIG_TMPFS_XATTR
 
           # 可选: 网络相关配置 (Docker/NAT 模式)
           enable_config_if_defined CONFIG_NETFILTER_XT_MATCH_ADDRTYPE
@@ -1117,6 +1147,17 @@ jobs:
           # 不是 CONFIG_MGLRU（那是旧名称，5.17+ 后改名）
           enable_config_if_defined CONFIG_LRU_GEN
           enable_config_if_defined CONFIG_LRU_GEN_ENABLED
+
+          # Control groups (cgroups) - container resource management
+          enable_config_if_defined CONFIG_CGROUPS
+          enable_config_if_defined CONFIG_CGROUP_DEVICE
+          enable_config_if_defined CONFIG_CGROUP_SCHED
+          enable_config_if_defined CONFIG_FAIR_GROUP_SCHED
+          enable_config_if_defined CONFIG_CGROUP_FREEZER
+          enable_config_if_defined CONFIG_CGROUP_NET_PRIO
+          enable_config_if_defined CONFIG_MEMCG
+          enable_config_if_defined CONFIG_MEMCG_SWAP
+          enable_config_if_defined CONFIG_CGROUP_CPUACCT
 
           echo "Droidspaces 集成完成"
 
