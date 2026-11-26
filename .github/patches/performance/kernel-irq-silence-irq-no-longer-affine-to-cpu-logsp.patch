@@ -1,16 +1,17 @@
-From 1ba30263ee151521ed2f8c8953161ed6a07a8dfc Mon Sep 17 00:00:00 2001
-From: Jebaitedneko <Jebaitedneko@gmail.com>
-Date: Thu, 7 Oct 2021 14:33:36 +0800
-Subject: [PATCH] kernel/irq: silence irq no longer affine to cpu logspam
+From 84c604842bce7b0c340823c5bc26e96c9e14aa6e Mon Sep 17 00:00:00 2001
+From: Ahmed Al-Nassif <mr.ahmed.nassif@gmail.com>
+Date: Mon, 22 Jun 2026 23:29:44 +0300
+Subject: [PATCH 23/24] kernel/irq: silence irq no longer affine to cpu logspam
 
 Signed-off-by: Jebaitedneko <Jebaitedneko@gmail.com>
 Signed-off-by: Cyber Knight <cyberknight755@gmail.com>
+Signed-off-by: Ahmed Al-Nassif <mr.ahmed.nassif@gmail.com>
 ---
  kernel/irq/cpuhotplug.c | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/kernel/irq/cpuhotplug.c b/kernel/irq/cpuhotplug.c
-index 755346ea98196..81a999db9ed25 100644
+index eb8628390..5080534bf 100644
 --- a/kernel/irq/cpuhotplug.c
 +++ b/kernel/irq/cpuhotplug.c
 @@ -147,7 +147,7 @@ static bool migrate_one_irq(struct irq_desc *desc)
@@ -19,6 +20,6 @@ index 755346ea98196..81a999db9ed25 100644
  	if (err) {
 -		pr_warn_ratelimited("IRQ%u: set affinity failed(%d).\n",
 +		pr_debug_ratelimited("IRQ%u: set affinity failed(%d).\n",
- 				    d->irq, err)
+ 				    d->irq, err);
  		brokeaff = false;
  	}

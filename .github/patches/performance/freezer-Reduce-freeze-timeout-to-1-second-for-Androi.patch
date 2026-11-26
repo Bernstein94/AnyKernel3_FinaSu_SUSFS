@@ -1,7 +1,7 @@
-From 0be8fb41e30ad7153a780aea502ebf986b3c12f1 Mon Sep 17 00:00:00 2001
-From: Sultan Alsawaf <sultan@kerneltoast.com>
-Date: Tue, 3 May 2022 23:21:21 +0000
-Subject: [PATCH] PM / freezer: Reduce freeze timeout to 1 second for Android
+From 36b525680e89840f9dd3529616cc7dea3c00ff17 Mon Sep 17 00:00:00 2001
+From: Ahmed Al-Nassif <mr.ahmed.nassif@gmail.com>
+Date: Mon, 22 Jun 2026 23:01:00 +0300
+Subject: [PATCH 15/24] freezer: Reduce freeze timeout to 1 second for Android
 
 Freezing processes on Android usually takes less than 100 ms, and if it
 takes longer than that to the point where the 20 second freeze timeout is
@@ -12,19 +12,20 @@ timeout to a very generous 1 second for Android and don't let anything mess
 with it.
 
 Signed-off-by: Sultan Alsawaf <sultan@kerneltoast.com>
+Signed-off-by: Ahmed Al-Nassif <mr.ahmed.nassif@gmail.com>
 ---
  kernel/power/main.c    | 3 +++
  kernel/power/process.c | 2 +-
  2 files changed, 4 insertions(+), 1 deletion(-)
 
 diff --git a/kernel/power/main.c b/kernel/power/main.c
-index a3543bd2d25af..f691f144fe2bd 100644
+index 070f2d035..7a546cf0f 100644
 --- a/kernel/power/main.c
 +++ b/kernel/power/main.c
-@@ -922,6 +922,9 @@ static ssize_t pm_freeze_timeout_store(struct kobject *kobj,
+@@ -913,6 +913,9 @@ static ssize_t pm_freeze_timeout_store(struct kobject *kobj,
  {
  	unsigned long val;
- 
+
 +	/* Don't let anything in Android change the freeze timeout */
 +	return n;
 +
@@ -32,7 +33,7 @@ index a3543bd2d25af..f691f144fe2bd 100644
  		return -EINVAL;
 
 diff --git a/kernel/power/process.c b/kernel/power/process.c
-index a22a91b7e3d92..8eda64d0cc36e 100644
+index 319e4f7e4..290682666 100644
 --- a/kernel/power/process.c
 +++ b/kernel/power/process.c
 @@ -25,7 +25,7 @@
@@ -42,4 +43,5 @@ index a22a91b7e3d92..8eda64d0cc36e 100644
 -unsigned int __read_mostly freeze_timeout_msecs = 20 * MSEC_PER_SEC;
 +unsigned int __read_mostly freeze_timeout_msecs = MSEC_PER_SEC;
 
-static int try_to_freeze_tasks(bool user_only) {
+ static int try_to_freeze_tasks(bool user_only)
+ {

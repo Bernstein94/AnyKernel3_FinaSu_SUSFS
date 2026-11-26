@@ -2068,51 +2068,28 @@ jobs:
             fi
           }
 
-          apply_patch "optimized_mem_operations" "optimized_mem_operations.patch"
-          apply_patch "file_struct_8bytes_align" "file_struct_8bytes_align.patch"
-          apply_patch "reduce_cache_pressure" "reduce_cache_pressure.patch"
-
-          apply_patch "mem_opt_prefetch" "mem_opt_prefetch.patch"
-
-          if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | tail -n1)" = "$KERNEL_VERSION" ]; then
-            apply_patch "optimise_memcmp" "optimise_memcmp.patch"
-          elif [ "$(printf '%s\n' "$KERNEL_VERSION" "5.11" | sort -V | tail -n1)" = "$KERNEL_VERSION" ]; then
-            sed -e 's/SYM_FUNC_START(__pi_memcmp)/SYM_FUNC_START_WEAK_PI(memcmp)/' -e 's/SYM_FUNC_END(__pi_memcmp)/SYM_FUNC_END_PI(memcmp)/' -e 's/SYM_FUNC_ALIAS_WEAK(memcmp, __pi_memcmp)/EXPORT_SYMBOL_NOKASAN(memcmp)/' "$PATCH_DIR/optimise_memcmp.patch" | patch -p1 --forward 2>/dev/null && echo "[+] Applied: optimise_memcmp (5.11 variant)" || { echo "[!] Skipped: optimise_memcmp (5.11 variant)"; FAILED_PATCHES="$FAILED_PATCHES optimise_memcmp"; }
-          else
-            echo "[!] Skipped: optimise_memcmp (unsupported kernel version $KERNEL_VERSION)"
-            FAILED_PATCHES="$FAILED_PATCHES optimise_memcmp"
-          fi
-
-          apply_patch "minimise_wakeup_time" "minimise_wakeup_time.patch"
-          apply_patch "int_sqrt" "int_sqrt.patch"
-          apply_patch "reduce_gc_thread_sleep_time" "reduce_gc_thread_sleep_time.patch"
-          apply_patch "add_timeout_wakelocks_globally" "add_timeout_wakelocks_globally.patch"
-          apply_patch "f2fs_reduce_congestion" "f2fs_reduce_congestion.patch"
-          apply_patch "reduce_freeze_timeout" "reduce_freeze_timeout.patch"
-
-          if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
-            apply_patch "clear_page_16bytes_align" "clear_page_16bytes_align.patch"
-          else
-            cat "$PATCH_DIR/clear_page_16bytes_align.patch" | sed -e 's/SYM_FUNC_START_PI(clear_page)/SYM_FUNC_START_PI(__pi_clear_page)/' | patch -p1 -F3 --forward 2>/dev/null && echo "[+] Applied: clear_page_16bytes_align (transformed)" || { echo "[!] Skipped: clear_page_16bytes_align (transformed)"; FAILED_PATCHES="$FAILED_PATCHES clear_page_16bytes_align"; }
-          fi
-
-          echo "Patching avoid_extra_s2idle_wake_attempts.patch"
-          FILE="drivers/base/power/wakeup.c"
-          if grep -q "^void pm_system_wakeup(void)" "$FILE"; then
-            if sed -n '/^void pm_system_wakeup(void)/,/^}/p' "$FILE" | grep -q 'suspend_abort_fs_sync();'; then
-              sed -i '/^void pm_system_wakeup(void)/,/^}/{
-                /suspend_abort_fs_sync();/d
-              }' "$FILE"
-            fi
-          fi
-          apply_patch "avoid_extra_s2idle_wake_attempts" "avoid_extra_s2idle_wake_attempts.patch" "-F3"
-          apply_patch "disable_cache_hot_buddy" "disable_cache_hot_buddy.patch" "-F3"
-          apply_patch "f2fs_enlarge_min_fsync_blocks" "f2fs_enlarge_min_fsync_blocks.patch" "-F3"
-          apply_patch "increase_ext4_default_commit_age" "increase_ext4_default_commit_age.patch" "-F3"
-          apply_patch "increase_sk_mem_packets" "increase_sk_mem_packets.patch" "-F3"
-          apply_patch "reduce_pci_pme_wakeups" "reduce_pci_pme_wakeups.patch" "-F3"
-          apply_patch "silence_irq_cpu_logspam" "silence_irq_cpu_logspam.patch" "-F3"
-          apply_patch "silence_system_logspam" "silence_system_logspam.patch" "-F3"
+          apply_patch "alarmtimer-Minimize-wakeup-time" "alarmtimer-Minimize-wakeup-time.patch"
+          apply_patch "sched-core-Adjusting-the-order-of-scanning-CPU" "sched-core-Adjusting-the-order-of-scanning-CPU.patch"
+          apply_patch "arm64-lib-Memory-utilities-optimization" "arm64-lib-Memory-utilities-optimization.patch"
+          apply_patch "ALSA-pcm-restore-old-wait_time-calculation" "ALSA-pcm-restore-old-wait_time-calculation.patch"
+          apply_patch "freezer-Reduce-freeze-timeout-to-1-second-for-Androi" "freezer-Reduce-freeze-timeout-to-1-second-for-Androi.patch"
+          apply_patch "ANDROID-mm-vmscan-force-MGLRU-fully-enabled-by-defau" "ANDROID-mm-vmscan-force-MGLRU-fully-enabled-by-defau.patch"
+          apply_patch "kernel-module.c-Force-loading-of-modules-that-fail-s" "kernel-module.c-Force-loading-of-modules-that-fail-s.patch"
+          apply_patch "feat-lib-string-optimized-mem-operations" "feat-lib-string-optimized-mem-operations.patch"
+          apply_patch "fs-Align-file-struct-to-8-bytes" "fs-Align-file-struct-to-8-bytes.patch"
+          apply_patch "fs-Reduce-cache-pressure" "fs-Reduce-cache-pressure.patch"
+          apply_patch "int_sqrt-Improve-3x-faster-integer-sqrt" "int_sqrt-Improve-3x-faster-integer-sqrt.patch"
+          apply_patch "kernel-irq-silence-irq-no-longer-affine-to-cpu-logsp" "kernel-irq-silence-irq-no-longer-affine-to-cpu-logsp.patch"
+          apply_patch "net-sock-increase-default-number-of-_SK_MEM_PACKETS-" "net-sock-increase-default-number-of-_SK_MEM_PACKETS-.patch"
+          apply_patch "printk-Silence-useless-system-log-spam" "printk-Silence-useless-system-log-spam.patch"
+          apply_patch "sched-fair-Disable-CACHE_HOT_BUDDY-to-leverage-Dynam" "sched-fair-Disable-CACHE_HOT_BUDDY-to-leverage-Dynam.patch"
+          apply_patch "wakeup-Avoid-excessive-s2idle-wake-attempts-in" "wakeup-Avoid-excessive-s2idle-wake-attempts-in.patch"
+          apply_patch "arm64-Align-clear_page-to-16-bytes" "arm64-Align-clear_page-to-16-bytes.patch"
+          apply_patch "arm64-lib-Optimize-memcmp" "arm64-lib-Optimize-memcmp.patch"
+          apply_patch "f2fs-Enlarge-min_fsync_blocks-to-20" "f2fs-Enlarge-min_fsync_blocks-to-20.patch"
+          apply_patch "f2fs-gc-Reduce-GC-thread-urgent-sleep-time-to-50ms" "f2fs-gc-Reduce-GC-thread-urgent-sleep-time-to-50ms.patch"
+          apply_patch "f2fs-reduce-timeout-for-uncongestion" "f2fs-reduce-timeout-for-uncongestion.patch"
+          apply_patch "feat-increase-the-ext4-default-commit-age" "feat-increase-the-ext4-default-commit-age.patch"
 
           if [ -n "$FAILED_PATCHES" ]; then
             echo "[!] Some patches did not apply:$FAILED_PATCHES"

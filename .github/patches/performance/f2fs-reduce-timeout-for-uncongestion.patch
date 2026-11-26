@@ -1,7 +1,7 @@
-From bcece71b5a925bb9ef038284ef031b057f207b81 Mon Sep 17 00:00:00 2001
-From: Park Ju Hyung <qkrwngud825@gmail.com>
-Date: Mon, 1 Jun 2020 19:45:48 +0900
-Subject: [PATCH] f2fs: reduce timeout for uncongestion
+From d231a7c5bd1f10970d52ad1a134278394da0cc04 Mon Sep 17 00:00:00 2001
+From: Ahmed Al-Nassif <mr.ahmed.nassif@gmail.com>
+Date: Mon, 22 Jun 2026 22:59:24 +0300
+Subject: [PATCH 14/24] f2fs: reduce timeout for uncongestion
 
 On high fs utilization, congestion is hit quite frequently and waiting for a
 whooping 20ms is too expensive, especially on critical paths.
@@ -16,22 +16,23 @@ The new times are as follows:
 
 Co-authored-by: Danny Lin <danny@kdrag0n.dev>
 Signed-off-by: Park Ju Hyung <qkrwngud825@gmail.com>
+Signed-off-by: Ahmed Al-Nassif <mr.ahmed.nassif@gmail.com>
 ---
  fs/f2fs/f2fs.h | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/fs/f2fs/f2fs.h b/fs/f2fs/f2fs.h
-index 6e84dcc8c76e5..372080ca29a04 100644
+index 68b3fe6b4..3c66e2748 100644
 --- a/fs/f2fs/f2fs.h
 +++ b/fs/f2fs/f2fs.h
-@@ -596,8 +596,8 @@ enum {
+@@ -599,8 +599,8 @@ enum {
  
- #define DEFAULT_RETRY_IO_COUNT	8	/* maximum retry read IO or flush count */
+ #define MAX_FLUSH_RETRY_COUNT	3	/* maximum flush retry count in f2fs_enable_checkpoint() */
  
 -/* congestion wait timeout value, default: 20ms */
 -#define	DEFAULT_IO_TIMEOUT	(msecs_to_jiffies(20))
 +/* congestion wait timeout value, default: 6ms */
 +#define	DEFAULT_IO_TIMEOUT	(msecs_to_jiffies(6))
-
+ 
  /* maximum retry quota flush count */
  #define DEFAULT_RETRY_QUOTA_FLUSH_COUNT		8
