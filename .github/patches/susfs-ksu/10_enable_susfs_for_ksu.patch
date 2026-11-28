@@ -599,7 +599,7 @@ index 7e337abf..8b6e0b3c 100644
      pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
  
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
-index 1e4ee63d..a9ed3bb1 100644
+index 9d4dd6ff..a9ed3bb1 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -1,7 +1,4 @@
@@ -618,7 +618,7 @@ index 1e4ee63d..a9ed3bb1 100644
  // security/selinux/include/security.h
  #include <security.h>
  #include <ss/context.h>
-@@ -29,421 +27,18 @@
+@@ -29,434 +27,18 @@
  #include <ss/conditional.h>
  #include "avc.h"
  #include "klog.h" // IWYU pragma: keep
@@ -628,6 +628,7 @@ index 1e4ee63d..a9ed3bb1 100644
  #include "ksu.h"
  #include "policy/feature.h"
 -#include "hook/lsm_hook.h"
+-#include "util.h"
  
  static DEFINE_MUTEX(selinux_hide_mutex);
 -static bool ksu_selinux_hide_enabled __read_mostly = false;
@@ -676,18 +677,25 @@ index 1e4ee63d..a9ed3bb1 100644
 -static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct context *scontext,
 -                                            struct context *tcontext, u16 tclass, struct av_decision *avd,
 -                                            struct extended_perms *xperms) = NULL;
+-static int (*cap_capable_fn)(const struct cred *cred, struct user_namespace *targ_ns, int cap,
+-                             unsigned int opts) = NULL;
+-static void (*audit_log_n_untrustedstring_fn)(struct audit_buffer *ab, const char *string, size_t len) = NULL;
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+-static int (*security_validate_transition_fn)(u32 oldsid, u32 newsid, u32 tasksid, u16 tclass) = NULL;
+-#else
+-static int (*security_validate_transition_fn)(struct selinux_state *state, u32 oldsid, u32 newsid, u32 tasksid,
+-                                              u16 tclass) = NULL;
+-#endif
 -
 -static write_op_fn *context_write, *access_write;
 -static write_op_fn orig_context_write, orig_access_write;
 -
 -#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
--#define ksu_avc_has_perm_compat(...) avc_has_perm(__VA_ARGS__)
 -#define ksu_security_bounded_transition_compat(...) security_bounded_transition(__VA_ARGS__)
--#define ksu_security_validate_transition_compat(...) security_validate_transition(__VA_ARGS__)
+-#define ksu_security_validate_transition_compat(...) security_validate_transition_fn(__VA_ARGS__)
 -#else
--#define ksu_avc_has_perm_compat(...) avc_has_perm(&selinux_state, __VA_ARGS__)
 -#define ksu_security_bounded_transition_compat(...) security_bounded_transition(&selinux_state, __VA_ARGS__)
--#define ksu_security_validate_transition_compat(...) security_validate_transition(&selinux_state, __VA_ARGS__)
+-#define ksu_security_validate_transition_compat(...) security_validate_transition_fn(&selinux_state, __VA_ARGS__)
 -#endif
 -
 -#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
@@ -870,9 +878,7 @@ index 1e4ee63d..a9ed3bb1 100644
 -            return error;
 -        }
 -    }
-+DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
-+struct page *fake_status = NULL;
- 
+-
 -    new = prepare_creds();
 -    if (!new)
 -        return -ENOMEM;
@@ -946,7 +952,7 @@ index 1e4ee63d..a9ed3bb1 100644
 -        goto call_orig;
 -
 -    // Keep native force parsing for callers with CAP_MAC_ADMIN
--    if (!cap_capable(current_cred(), &init_user_ns, CAP_MAC_ADMIN, CAP_OPT_NOAUDIT))
+-    if (!cap_capable_fn || !cap_capable_fn(current_cred(), &init_user_ns, CAP_MAC_ADMIN, CAP_OPT_NOAUDIT))
 -        goto call_orig;
 -
 -    sbsec = ksu_selinux_superblock(inode->i_sb);
@@ -986,6 +992,11 @@ index 1e4ee63d..a9ed3bb1 100644
 -    if (rc == -EINVAL) {
 -        struct audit_buffer *ab;
 -        size_t audit_size = value ? size : 0;
++DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
++struct page *fake_status = NULL;
+ 
+-        if (!audit_log_n_untrustedstring_fn)
+-            goto call_orig;
 -
 -        // Strip only final NUL so embedded NUL bytes remain in audit log
 -        if (audit_size && ((const char *)value)[audit_size - 1] == '\0')
@@ -993,7 +1004,7 @@ index 1e4ee63d..a9ed3bb1 100644
 -        ab = audit_log_start(audit_context(), GFP_ATOMIC, AUDIT_SELINUX_ERR);
 -        if (ab) {
 -            audit_log_format(ab, "op=setxattr invalid_context=");
--            audit_log_n_untrustedstring(ab, value, audit_size);
+-            audit_log_n_untrustedstring_fn(ab, value, audit_size);
 -            audit_log_end(ab);
 -        }
 -    }
@@ -1003,6 +1014,8 @@ index 1e4ee63d..a9ed3bb1 100644
 -    rc = ksu_avc_has_perm_compat(sid, newsid, isec->sclass, FILE__RELABELTO, &ad);
 -    if (rc)
 -        return rc;
+-    if (!security_validate_transition_fn)
+-        goto call_orig;
 -    rc = ksu_security_validate_transition_compat(isec->sid, newsid, sid, isec->sclass);
 -    if (rc)
 -        return rc;
@@ -1045,7 +1058,7 @@ index 1e4ee63d..a9ed3bb1 100644
  {
      mutex_lock(&selinux_state.status_lock);
      if (fake_status)
-@@ -454,7 +49,7 @@ static void initialize_fake_status()
+@@ -467,7 +49,7 @@ static void initialize_fake_status()
      }
  
      struct selinux_kernel_status *status = page_address(selinux_state.status_page);
@@ -1054,7 +1067,7 @@ index 1e4ee63d..a9ed3bb1 100644
          pr_warn("initialize_fake_status: skip not enforcing\n");
          goto out;
      }
-@@ -467,22 +62,6 @@ static void initialize_fake_status()
+@@ -480,22 +62,6 @@ static void initialize_fake_status()
  
      struct selinux_kernel_status *new_status = page_address(new_page);
      memcpy(new_status, status, sizeof(*status));
@@ -1077,7 +1090,7 @@ index 1e4ee63d..a9ed3bb1 100644
  
      fake_status = new_page;
      pr_info("initialize_fake_status initialized: sequence=%d, policyload=%d, enforcing=%d\n", new_status->sequence,
-@@ -492,131 +71,32 @@ out:
+@@ -505,144 +71,32 @@ out:
      mutex_unlock(&selinux_state.status_lock);
  }
  
@@ -1142,6 +1155,19 @@ index 1e4ee63d..a9ed3bb1 100644
 -    context_struct_compute_av_fn = find_kernel_symbol_exact("context_struct_compute_av");
 -    if (!context_struct_compute_av_fn) {
 -        pr_warn("context_struct_compute_av not found!\n");
+-    }
+-
+-    cap_capable_fn = find_kernel_symbol_exact("cap_capable");
+-    if (!cap_capable_fn) {
+-        pr_warn("cap_capable not found!\n");
+-    }
+-    audit_log_n_untrustedstring_fn = find_kernel_symbol_exact("audit_log_n_untrustedstring");
+-    if (!audit_log_n_untrustedstring_fn) {
+-        pr_warn("audit_log_n_untrustedstring not found!\n");
+-    }
+-    security_validate_transition_fn = find_kernel_symbol_exact("security_validate_transition");
+-    if (!security_validate_transition_fn) {
+-        pr_warn("security_validate_transition not found!\n");
 -    }
 -
 -    context_write = &selinux_write_op[SEL_CONTEXT];
@@ -1222,7 +1248,7 @@ index 1e4ee63d..a9ed3bb1 100644
  }
  
  static int selinux_hide_feature_get(u64 *value)
-@@ -641,10 +121,11 @@ static int selinux_hide_feature_set(u64 value)
+@@ -667,10 +121,11 @@ static int selinux_hide_feature_set(u64 value)
          }
      } else {
          if (ksu_selinux_hide_running) {
@@ -1235,7 +1261,7 @@ index 1e4ee63d..a9ed3bb1 100644
      mutex_unlock(&selinux_hide_mutex);
      return ret;
  }
-@@ -656,65 +137,18 @@ static const struct ksu_feature_handler selinux_hide_handler = {
+@@ -682,65 +137,18 @@ static const struct ksu_feature_handler selinux_hide_handler = {
      .set_handler = selinux_hide_feature_set,
  };
  
@@ -1302,7 +1328,7 @@ index 1e4ee63d..a9ed3bb1 100644
          ksu_selinux_hide_running = false;
      }
      mutex_unlock(&selinux_hide_mutex);
-@@ -729,7 +163,7 @@ void __exit ksu_selinux_hide_exit()
+@@ -755,7 +163,7 @@ void __exit ksu_selinux_hide_exit()
  void ksu_selinux_hide_drop_backup_if_unused()
  {
      mutex_lock(&selinux_hide_mutex);
@@ -1311,7 +1337,7 @@ index 1e4ee63d..a9ed3bb1 100644
          pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
          sidtab_destroy(backup_sepolicy->sidtab);
          kfree(backup_sepolicy->sidtab);
-@@ -737,827 +171,4 @@ void ksu_selinux_hide_drop_backup_if_unused()
+@@ -763,827 +171,4 @@ void ksu_selinux_hide_drop_backup_if_unused()
          backup_sepolicy = NULL;
      }
      mutex_unlock(&selinux_hide_mutex);
@@ -3640,7 +3666,7 @@ index a4fb4138..1a2fb61c 100644
          free_module_rc();
      }
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index 587f9306..2595940b 100644
+index fe4cfd6b..090c9c12 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -27,17 +27,17 @@ extern int avc_ss_reset(u32 seqno);
@@ -3679,7 +3705,7 @@ index 587f9306..2595940b 100644
      ksu_type(db, KERNEL_SU_DOMAIN, "domain");
      ksu_permissive(db, KERNEL_SU_DOMAIN);
      ksu_typeattribute(db, KERNEL_SU_DOMAIN, "mlstrustedsubject");
-@@ -164,7 +160,9 @@ void apply_kernelsu_rules()
+@@ -167,7 +163,9 @@ void apply_kernelsu_rules()
      synchronize_rcu();
      ksu_destroy_sepolicy(old_pol);
  
@@ -3690,7 +3716,7 @@ index 587f9306..2595940b 100644
  out_unlock:
      mutex_unlock(&selinux_state.policy_mutex);
  }
-@@ -519,15 +517,11 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
+@@ -522,15 +520,11 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
          cmd_index++;
      }
  
@@ -4041,7 +4067,7 @@ index 635ec01c..c7b28b86 100644
  int ksu_sulog_emit_grant_root(int retval, __u32 uid, __u32 euid, gfp_t gfp);
  
 diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
-index caf18c7c..4373f4b7 100644
+index b2eca6e4..67d85b07 100644
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
 @@ -8,6 +8,8 @@
